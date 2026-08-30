@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 160" fill="none">
+  <defs>
+    <linearGradient id="bisLogoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F4C81" />
+      <stop offset="100%" stop-color="#0B3B60" />
+    </linearGradient>
+    <linearGradient id="saffronGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF9933" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Emblem Badge -->
+  <rect x="10" y="15" width="130" height="130" rx="28" fill="url(#bisLogoGrad)" />
+  <circle cx="75" cy="80" r="52" fill="none" stroke="url(#saffronGrad)" stroke-width="4" />
+  <path d="M45 102 L75 48 L105 102 Z" fill="none" stroke="#FFFFFF" stroke-width="8" stroke-linejoin="round" stroke-linecap="round" />
+  <path d="M57 86 L93 86" stroke="#FFFFFF" stroke-width="7" stroke-linecap="round" />
+  <circle cx="75" cy="74" r="6" fill="url(#saffronGrad)" />
+
+  <!-- Typography -->
+  <text x="160" y="52" font-family="'Noto Sans Devanagari', sans-serif" font-weight="700" font-size="20" fill="#0B3B60">?????? ???? ??????</text>
+  <text x="160" y="82" font-family="'Inter', sans-serif" font-weight="800" font-size="22" fill="#0F4C81" letter-spacing="-0.5">BUREAU OF INDIAN STANDARDS</text>
+  <text x="160" y="112" font-family="'Inter', sans-serif" font-weight="600" font-size="13" fill="#64748B" letter-spacing="1">NATIONAL STANDARDS BODY OF INDIA</text>
+  <rect x="160" y="124" width="400" height="3" rx="1.5" fill="url(#saffronGrad)" />
+</svg>
