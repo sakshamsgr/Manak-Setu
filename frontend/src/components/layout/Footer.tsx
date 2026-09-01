@@ -1,21 +1,22 @@
 import React from 'react';
-import { ShieldCheck, ExternalLink, Phone, Mail, MapPin, Award, CheckCircle } from 'lucide-react';
+import { ExternalLink, Phone, Mail, MapPin } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 export const Footer: React.FC = () => {
+  const { t } = useLanguage();
+
   return (
     <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 text-xs mt-auto">
       {/* Upper Grid */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 md:grid-cols-4 gap-8">
         {/* Col 1: About BIS */}
         <div className="space-y-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-bis-700 to-bis-900 border border-amber-400/40 p-1 flex items-center justify-center shadow">
-              <ShieldCheck className="w-5 h-5 text-amber-400" />
-            </div>
-            <div>
-              <div className="font-extrabold text-sm text-white tracking-tight">Bureau of Indian Standards</div>
-              <div className="text-[10px] text-amber-400 font-semibold uppercase">????: ??????????:</div>
-            </div>
+          <div className="bg-white p-2.5 rounded-xl w-fit shadow-sm">
+            <img 
+              src="/bis-logo.png" 
+              alt="Bureau of Indian Standards" 
+              className="h-9 w-auto object-contain" 
+            />
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed">
             The National Standards Body of India established under the BIS Act 2016 for standardisation, marking, and quality certification of goods.
@@ -88,7 +89,7 @@ export const Footer: React.FC = () => {
         </div>
       </div>
 
-      {/* Bottom Copyright & Disclaimer Strip */}
+      {/* Bottom Copyright Strip */}
       <div className="bg-slate-950 px-4 sm:px-8 py-3 border-t border-slate-800 text-[11px] text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
         <div>
           © 2026 Bureau of Indian Standards (BIS) • AI Compliance Assistant (SIH 2026)

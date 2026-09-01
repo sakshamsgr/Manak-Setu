@@ -8,6 +8,8 @@ from pgvector.psycopg2 import register_vector
 from supabase import create_client, Client
 from google import genai
 from google.genai import types
+from dotenv import load_dotenv
+load_dotenv()  # Reads the .env file and sets GEMINI_API_KEY in the environment
 
 # --- Configuration ---
 SUPABASE_URL = "https://ndpfmlkhxjphooyzvdxk.supabase.co"

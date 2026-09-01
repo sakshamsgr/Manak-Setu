@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
+import { LanguageProvider } from './context/LanguageContext';
 import { GovBanner } from './components/layout/GovBanner';
 import { Header, MainNavTab } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
 import { InstallModal } from './components/layout/InstallModal';
 
 import { HomeHero } from './components/home/HomeHero';
-import { ConsultationDossier } from './components/home/ConsultationDossier';
+import { ProductCertificationGuide } from './components/guide/ProductCertificationGuide';
 import { TrustStatsSection } from './components/home/TrustStatsSection';
 
 import { ConsultationChatView } from './components/chat/ConsultationChatView';
@@ -16,13 +17,13 @@ import { ConsumerHelpView } from './components/compliance/ConsumerHelpView';
 import { FeeEstimatorView } from './components/estimator/FeeEstimatorView';
 
 import { useChat } from './hooks/useChat';
-import { useConsultation } from './hooks/useConsultation';
+import { useProductJourney } from './hooks/useProductJourney';
 import { usePWAInstall } from './hooks/usePWAInstall';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<MainNavTab>('home');
 
-  // General Chat Session Hook
+  // General Chat Session Hook (for AI Assistant tab)
   const {
     sessions,
     activeSession,
@@ -37,15 +38,14 @@ export const App: React.FC = () => {
     sendAttachment: sendChatAttachment,
   } = useChat();
 
-  // Structured Product Consultation Hook
+  // 6-Stage Product Certification Guide Hook (Main Home Journey)
   const {
-    activeDossier,
-    followUpMessages,
-    isLoading: isConsultationLoading,
-    startConsultation,
-    sendFollowUp,
-    resetConsultation,
-  } = useConsultation();
+    guideData,
+    isLoading: isJourneyLoading,
+    startJourney,
+    askContextualAI,
+    resetJourney,
+  } = useProductJourney();
 
   // PWA Installation Hook
   const {
@@ -57,13 +57,13 @@ export const App: React.FC = () => {
     triggerInstall,
   } = usePWAInstall();
 
-  // Handle hero consultation query submit
+  // Handler for Hero Search submission -> starts 6-stage Product Certification Guide
   const handleHeroSubmit = (query: string, file?: File) => {
     setActiveTab('home');
-    startConsultation(query, file);
+    startJourney(query, file);
   };
 
-  // Jump to chat with a pre-filled prompt
+  // Handler for jumping to general chat with a prompt
   const handleStartChatPrompt = (prompt: string) => {
     setActiveTab('chat');
     sendChatMessage(prompt);
@@ -86,31 +86,29 @@ export const App: React.FC = () => {
 
       {/* 3. Main Content Views */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* VIEW 1: HOME / COMPLIANCE NAVIGATOR */}
+        {/* VIEW 1: HOME / PRODUCT CERTIFICATION GUIDE */}
         {activeTab === 'home' && (
           <div className="flex-1 flex flex-col space-y-8">
-            {/* Hero Consultation Query Box */}
-            <HomeHero
-              onSubmitQuery={handleHeroSubmit}
-              onSelectNavTab={setActiveTab}
-              isLoading={isConsultationLoading}
-            />
-
-            {/* If user has an active product dossier, render it prominently */}
-            {activeDossier ? (
-              <div className="px-4 sm:px-6 lg:px-8">
-                <ConsultationDossier
-                  dossier={activeDossier}
-                  followUpMessages={followUpMessages}
-                  onSendFollowUp={sendFollowUp}
-                  onReset={resetConsultation}
-                  isLoading={isConsultationLoading}
+            {guideData ? (
+              /* When user enters a product query, render the 6-Stage Product Certification Guide */
+              <div className="px-4 sm:px-6 lg:px-8 py-8">
+                <ProductCertificationGuide
+                  guideData={guideData}
+                  onRestart={resetJourney}
+                  onAskAI={askContextualAI}
                   onJumpToEstimator={() => setActiveTab('estimator')}
                 />
               </div>
             ) : (
-              /* Otherwise, show the National Standardization Infrastructure statistics */
-              <TrustStatsSection />
+              /* Default Home View: Flagship Hero Consultation Card + Trust Stats */
+              <>
+                <HomeHero
+                  onSubmitQuery={handleHeroSubmit}
+                  onSelectNavTab={setActiveTab}
+                  isLoading={isJourneyLoading}
+                />
+                <TrustStatsSection />
+              </>
             )}
           </div>
         )}
@@ -170,6 +168,14 @@ export const App: React.FC = () => {
         onNativeInstall={triggerInstall}
       />
     </div>
+  );
+};
+
+export const App: React.FC = () => {
+  return (
+    <LanguageProvider>
+      <AppContent />
+    </LanguageProvider>
   );
 };
 

@@ -20,6 +20,7 @@ import {
   Loader2
 } from 'lucide-react';
 import { MainNavTab } from '../layout/Header';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface HomeHeroProps {
   onSubmitQuery: (query: string, file?: File) => void;
@@ -27,39 +28,40 @@ interface HomeHeroProps {
   isLoading: boolean;
 }
 
-const SAMPLE_PRODUCT_PROMPTS = [
-  {
-    icon: <Zap className="w-3.5 h-3.5 text-amber-500" />,
-    label: 'Electric Kettles & Appliances',
-    prompt: 'I manufacture electric kettles. What BIS standards, QCO orders, and testing requirements do I need to follow?',
-  },
-  {
-    icon: <Droplets className="w-3.5 h-3.5 text-bis-500" />,
-    label: 'Packaged Drinking Water',
-    prompt: 'What are the mandatory licensing steps and chemical testing parameters for Packaged Drinking Water under IS 10500?',
-  },
-  {
-    icon: <Radio className="w-3.5 h-3.5 text-purple-500" />,
-    label: 'PVC Cables & Wires',
-    prompt: 'Is ISI mark mandatory for PVC insulated building wires under IS 694? What is the factory audit protocol?',
-  },
-  {
-    icon: <Award className="w-3.5 h-3.5 text-emerald-500" />,
-    label: 'Lithium-ion Batteries (CRS)',
-    prompt: 'What are the Scheme-II Compulsory Registration (CRS) requirements and lab test reports for secondary lithium batteries under IS 16046?',
-  },
-];
-
 export const HomeHero: React.FC<HomeHeroProps> = ({
   onSubmitQuery,
   onSelectNavTab,
   isLoading,
 }) => {
+  const { t } = useLanguage();
   const [query, setQuery] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+
+  const sampleProductPrompts = [
+    {
+      icon: <Zap className="w-3.5 h-3.5 text-amber-500" />,
+      label: 'Electric Kettles & Appliances',
+      prompt: 'I manufacture electric kettles. What BIS standards, QCO orders, and testing requirements do I need to follow?',
+    },
+    {
+      icon: <Droplets className="w-3.5 h-3.5 text-bis-500" />,
+      label: 'Packaged Drinking Water',
+      prompt: 'What are the mandatory licensing steps and chemical testing parameters for Packaged Drinking Water under IS 10500?',
+    },
+    {
+      icon: <Radio className="w-3.5 h-3.5 text-purple-500" />,
+      label: 'PVC Cables & Wires',
+      prompt: 'Is ISI mark mandatory for PVC insulated building wires under IS 694? What is the factory audit protocol?',
+    },
+    {
+      icon: <Award className="w-3.5 h-3.5 text-emerald-500" />,
+      label: 'Lithium-ion Batteries (CRS)',
+      prompt: 'What are the Scheme-II Compulsory Registration (CRS) requirements and lab test reports for secondary lithium batteries under IS 16046?',
+    },
+  ];
 
   // Speech-to-text setup
   useEffect(() => {
@@ -117,24 +119,24 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
 
   return (
     <div className="relative bg-gradient-to-b from-slate-100 via-white to-slate-50 border-b border-slate-200 py-10 sm:py-16 px-4 sm:px-6 lg:px-8 overflow-hidden">
-      {/* Background National Graphic Element */}
+      {/* Background Subtle Gradient Blobs */}
       <div className="absolute right-0 top-0 -mt-12 -mr-12 w-96 h-96 bg-bis-100/40 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute left-0 bottom-0 -mb-12 -ml-12 w-96 h-96 bg-amber-100/30 rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-4xl mx-auto space-y-8 relative z-10">
-        {/* Value Proposition Header */}
+        {/* Official BIS Emblem / Header */}
         <div className="text-center space-y-3">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-bis-50 border border-bis-200 text-bis-900 text-xs font-bold uppercase tracking-wider shadow-2xs">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-bis-50 border border-bis-200 text-bis-900 text-xs font-extrabold uppercase tracking-wider shadow-2xs">
             <ShieldCheck className="w-4 h-4 text-bis-700" />
-            <span>National Standards Compliance Gateway • SIH 2026</span>
+            <span>{t('heroBadge')}</span>
           </div>
 
           <h1 className="text-2xl sm:text-4xl lg:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
-            Your Guide to <span className="text-bis-800">BIS Standards</span> & <span className="text-amber-600">Certification</span>
+            {t('heroTitlePrefix')} <span className="text-bis-800">{t('heroTitleStandards')}</span> {t('heroTitleAnd')} <span className="text-amber-600">{t('heroTitleCert')}</span>
           </h1>
 
-          <p className="text-sm sm:text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Find applicable Indian Standards, verify Quality Control Orders (QCOs), understand testing requirements, and access verified official BIS source citations — all in one place.
+          <p className="text-xs sm:text-sm md:text-base text-slate-600 max-w-2xl mx-auto leading-relaxed">
+            {t('heroSubtitle')}
           </p>
         </div>
 
@@ -144,7 +146,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
             <div className="flex items-center justify-between">
               <label className="block text-xs sm:text-sm font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                <span>Tell us about your product or compliance requirement:</span>
+                <span>{t('inputLabel')}</span>
               </label>
 
               <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
@@ -182,14 +184,10 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
               <textarea
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder={
-                  isRecording
-                    ? 'Listening to your voice query...'
-                    : 'Example: I manufacture electric kettles. What BIS standards, QCO mandates, and testing requirements do I need to follow?'
-                }
+                placeholder={isRecording ? t('listening') : t('inputPlaceholder')}
                 rows={3}
                 disabled={isLoading}
-                className="w-full bg-transparent border-0 focus:ring-0 focus:outline-none text-sm sm:text-base text-slate-900 placeholder:text-slate-400 resize-none font-medium custom-scrollbar"
+                className="w-full bg-transparent border-0 focus:ring-0 focus:outline-none text-xs sm:text-sm md:text-base text-slate-900 placeholder:text-slate-400 resize-none font-medium custom-scrollbar"
               />
 
               {/* Action Toolbar Inside Box */}
@@ -206,19 +204,19 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-bis-900 hover:bg-slate-200/70 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-bis-900 hover:bg-slate-200/70 transition-colors"
                     title="Upload product photo, label, or technical specification sheet"
                   >
                     <Paperclip className="w-4 h-4 text-bis-700" />
-                    <span className="hidden sm:inline">Attach Product Photo / Spec</span>
-                    <span className="sm:hidden">Attach</span>
+                    <span className="hidden sm:inline">{t('attachPhoto')}</span>
+                    <span className="sm:hidden">{t('attachShort')}</span>
                   </button>
 
                   {/* Voice Button */}
                   <button
                     type="button"
                     onClick={handleToggleVoice}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
                       isRecording
                         ? 'bg-rose-500 text-white animate-pulse'
                         : 'text-slate-600 hover:text-bis-900 hover:bg-slate-200/70'
@@ -226,7 +224,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
                     title={isRecording ? 'Listening... click to stop' : 'Speak your query'}
                   >
                     {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4 text-bis-700" />}
-                    <span className="hidden sm:inline">{isRecording ? 'Listening...' : 'Voice Query'}</span>
+                    <span className="hidden sm:inline">{isRecording ? t('listening') : t('voiceQuery')}</span>
                   </button>
                 </div>
 
@@ -234,7 +232,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
                 <button
                   type="submit"
                   disabled={(!query.trim() && !selectedFile) || isLoading}
-                  className={`px-5 py-2.5 rounded-xl font-bold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md ${
+                  className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md ${
                     (query.trim() || selectedFile) && !isLoading
                       ? 'bg-gradient-to-r from-bis-800 to-bis-900 hover:from-bis-700 hover:to-bis-800 text-white shadow-bis-900/20 transform active:scale-95'
                       : 'bg-slate-200 text-slate-400 cursor-not-allowed'
@@ -243,12 +241,12 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
-                      <span>Analyzing Standards...</span>
+                      <span>{t('analyzing')}</span>
                     </>
                   ) : (
                     <>
                       <Sparkles className="w-4 h-4 text-amber-400" />
-                      <span>Generate Compliance Dossier</span>
+                      <span>{t('generateGuideBtn')}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -259,11 +257,11 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
 
           {/* Quick Starting Product Queries */}
           <div className="mt-4 pt-4 border-t border-slate-100 space-y-2">
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-              Explore Common Product Journeys:
+            <div className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+              {t('explorePromptLabel')}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-              {SAMPLE_PRODUCT_PROMPTS.map((item, idx) => (
+              {sampleProductPrompts.map((item, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleQuickPromptClick(item.prompt)}
@@ -281,7 +279,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
           </div>
         </div>
 
-        {/* 4 Core Starting Action Buttons (Actual User Needs) */}
+        {/* 4 Core Starting Action Buttons */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <button
             onClick={() => onSelectNavTab('standards')}
@@ -291,10 +289,10 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
               <BookOpen className="w-5 h-5" />
             </div>
             <div className="font-extrabold text-xs sm:text-sm text-slate-900">
-              Find Applicable Standard
+              {t('actionFindStandard')}
             </div>
             <p className="text-[11px] text-slate-500 leading-tight">
-              Search official IS catalog & QCO orders
+              {t('actionFindStandardSub')}
             </p>
           </button>
 
@@ -306,10 +304,10 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div className="font-extrabold text-xs sm:text-sm text-slate-900">
-              Certification Roadmap
+              {t('actionCertRoadmap')}
             </div>
             <p className="text-[11px] text-slate-500 leading-tight">
-              Scheme-I, CRS, and Hallmarking steps
+              {t('actionCertRoadmapSub')}
             </p>
           </button>
 
@@ -321,10 +319,10 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
               <FlaskConical className="w-5 h-5" />
             </div>
             <div className="font-extrabold text-xs sm:text-sm text-slate-900">
-              Testing & Laboratories
+              {t('actionTestingLabs')}
             </div>
             <p className="text-[11px] text-slate-500 leading-tight">
-              Locate BIS Apex & recognized test centers
+              {t('actionTestingLabsSub')}
             </p>
           </button>
 
@@ -336,13 +334,13 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
               <Calculator className="w-5 h-5" />
             </div>
             <div className="font-extrabold text-xs sm:text-sm text-slate-900 flex items-center justify-between">
-              <span>Fee & Concession</span>
+              <span>{t('actionFeeCalc')}</span>
               <span className="text-[9px] font-bold px-1.5 py-0.2 bg-amber-100 text-amber-900 rounded">
                 50% MSME
               </span>
             </div>
             <p className="text-[11px] text-slate-500 leading-tight">
-              Statutory tariff & startup incentives
+              {t('actionFeeCalcSub')}
             </p>
           </button>
         </div>

@@ -7,6 +7,9 @@ from pydantic import BaseModel
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+import smtplib
+from email.mime.text import MIMEText
+import random
 
 # Load environment variables from .env file
 load_dotenv()
@@ -81,10 +84,24 @@ async def chat_endpoint(req: ChatRequest):
 
     history = chat_sessions[req.session_id]
     retrieved_chunks = supabase_vector_search(req.message)
+    
+    # --- ADDED: Similarity / Content Guard ---
+    if not retrieved_chunks or len(retrieved_chunks) == 0:
+        return {
+            "response": "This information is not present in the indexed BIS standard documentation.",
+            "citations": []
+        }
+    # ----------------------------------------
+
     context_text = "\n".join([f"- {item['text']} (Page {item['meta']['page_number']})" for item in retrieved_chunks])
 
-    system_instruction = f"""You are an expert Indian Standards (BIS) assistant. 
-    Use the following retrieved context to answer the user's question accurately.
+    system_instruction = f"""You are a strict Bureau of Indian Standards (BIS) verification agent.
+    CRITICAL RULE: Answer the query SOLELY using the facts directly stated in the Context below.
+    - Do NOT extrapolate, assume, or use any prior training knowledge.
+    - If the Context does not explicitly contain the answer, reply EXACTLY with:
+    "This information is not present in the indexed BIS standard documentation."
+    - Always include the document name and page number when citing facts.
+
     Context:\n{context_text}"""
 
     gemini_history = []
@@ -99,7 +116,7 @@ async def chat_endpoint(req: ChatRequest):
             ],
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                temperature=0.2
+                temperature=0.0
             )
         )
 
@@ -125,12 +142,26 @@ async def multimodal_chat_endpoint(
     mime_type = file.content_type or "image/jpeg"
 
     retrieved_chunks = supabase_vector_search(message)
+    
+    # --- ADDED: Similarity / Content Guard ---
+    if not retrieved_chunks or len(retrieved_chunks) == 0:
+        return {
+            "filename": file.filename,
+            "response": "This information is not present in the indexed BIS standard documentation.",
+            "citations": []
+        }
+    # ----------------------------------------
+
     context_text = "\n".join([f"- {item['text']} (Page {item['meta']['page_number']})" for item in retrieved_chunks])
 
-    system_instruction = f"""You are an expert Indian Standards (BIS) compliance auditor.
-    Analyze the uploaded media and compare it against the Indian Standards context provided below.
+    system_instruction = f"""You are a strict Bureau of Indian Standards (BIS) compliance auditor.
+    CRITICAL RULE: Analyze the uploaded media and answer the query SOLELY using the facts directly stated in the Context below.
+    - Do NOT extrapolate, assume, or use any prior training knowledge.
+    - If the Context does not explicitly contain the answer, reply EXACTLY with:
+    "This information is not present in the indexed BIS standard documentation."
 
     Context:\n{context_text}"""
+
 
     media_part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
     text_part = types.Part.from_text(text=message)
@@ -141,7 +172,7 @@ async def multimodal_chat_endpoint(
             contents=[types.Content(role="user", parts=[media_part, text_part])],
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
-                temperature=0.2
+                temperature=0.0
             )
         )
 
@@ -155,6 +186,59 @@ async def multimodal_chat_endpoint(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# --- 5. Authentication & OTP Endpoints ---
+# Temporary memory store for OTPs (In production, use Redis or Supabase Auth)
+otp_storage = {}
+
+class OTPRequest(BaseModel):
+    email: str
+
+@app.post("/auth/send-otp")
+async def send_otp(req: OTPRequest):
+    # 1. Generate a random 6-digit OTP
+    otp_code = str(random.randint(100000, 999999))
+    otp_storage[req.email] = otp_code
+    
+    # 2. Setup your Email Credentials (use environment variables in production)
+    # WARNING: You must use an "App Password" here if using Gmail, not your normal password!
+    sender_email = os.getenv("SENDER_EMAIL") 
+    sender_password = os.getenv("SENDER_PASSWORD") 
+    
+    if not sender_email or not sender_password:
+        # FALLBACK: If you haven't set up a real email yet, just print it to the terminal!
+        print(f"\n[SECURITY] SIMULATED OTP FOR {req.email}: {otp_code}\n")
+        return {"message": "Simulated OTP sent to terminal"}
+
+    # 3. Actually send the email via Gmail SMTP
+    msg = MIMEText(f"Your official BIS AI Assistant verification code is: {otp_code}\n\nThis code will expire shortly.")
+    msg['Subject'] = 'BIS Portal Login Verification'
+    msg['From'] = sender_email
+    msg['To'] = req.email
+
+    try:
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(sender_email, sender_password)
+            server.send_message(msg)
+        return {"message": "OTP sent successfully via Email"}
+    except Exception as e:
+        print(f"Email Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to send email. Check your SMTP credentials.")
+
+class VerifyRequest(BaseModel):
+    email: str
+    otp: str
+
+@app.post("/auth/verify-otp")
+async def verify_otp(req: VerifyRequest):
+    stored_otp = otp_storage.get(req.email)
+    
+    if not stored_otp or stored_otp != req.otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP code.")
+    
+    # Clear OTP after successful login
+    del otp_storage[req.email]
+    return {"message": "Authentication successful!"}
 
 if __name__ == "__main__":
     import uvicorn

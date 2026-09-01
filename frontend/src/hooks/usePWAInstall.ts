@@ -14,21 +14,24 @@ export function usePWAInstall() {
   const [isInstallable, setIsInstallable] = useState(false);
   const [isInstalled, setIsInstalled] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
+  const [isAndroid, setIsAndroid] = useState(false);
   const [showInstallModal, setShowInstallModal] = useState(false);
 
   useEffect(() => {
     // Check if running in standalone mode (already installed)
     const isStandalone = 
       window.matchMedia('(display-mode: standalone)').matches ||
-      (window.navigator as any).standalone ||
+      (window.navigator as any).standalone === true ||
       document.referrer.includes('android-app://');
 
     setIsInstalled(isStandalone);
 
-    // Detect iOS
+    // Device detection
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
+    const isAndroidDevice = /android/.test(userAgent);
     setIsIOS(isIosDevice);
+    setIsAndroid(isAndroidDevice);
 
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
@@ -40,6 +43,7 @@ export function usePWAInstall() {
       setIsInstalled(true);
       setIsInstallable(false);
       setDeferredPrompt(null);
+      setShowInstallModal(false);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -53,6 +57,7 @@ export function usePWAInstall() {
 
   const triggerInstall = async (): Promise<boolean> => {
     if (!deferredPrompt) {
+      // If browser doesn't support direct prompt or hasn't fired beforeinstallprompt yet, open guided install modal
       setShowInstallModal(true);
       return false;
     }
@@ -69,7 +74,7 @@ export function usePWAInstall() {
       }
       return false;
     } catch (error) {
-      console.error('Error triggering PWA installation:', error);
+      console.warn('Native PWA install prompt error:', error);
       setShowInstallModal(true);
       return false;
     }
@@ -79,6 +84,7 @@ export function usePWAInstall() {
     isInstallable,
     isInstalled,
     isIOS,
+    isAndroid,
     showInstallModal,
     setShowInstallModal,
     triggerInstall,
