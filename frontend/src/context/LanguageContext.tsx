@@ -1,41 +1,37 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Language, translations } from '../i18n/translations';
+import React, { createContext, useContext, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../i18n/i18n';
+
+export type Language = 'en' | 'hi' | 'bn';
 
 interface LanguageContextType {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: keyof typeof translations.en, fallback?: string) => string;
+  t: (key: string, fallback?: string) => string;
 }
 
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
-const LANGUAGE_STORAGE_KEY = 'bis_ui_language_v1';
+const LANGUAGE_STORAGE_KEY = 'bis_ui_language_v2';
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [language, setLanguageState] = useState<Language>(() => {
-    try {
-      const saved = localStorage.getItem(LANGUAGE_STORAGE_KEY) as Language;
-      if (saved && (saved === 'en' || saved === 'hi')) {
-        return saved;
-      }
-    } catch {}
-    return 'en';
-  });
+  const { t: i18nT, i18n } = useTranslation();
+
+  const currentLanguage = (i18n.language as Language) || 'en';
 
   const setLanguage = (lang: Language) => {
-    setLanguageState(lang);
+    i18n.changeLanguage(lang);
     try {
       localStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
     } catch {}
   };
 
-  const t = (key: keyof typeof translations.en, fallback?: string): string => {
-    const langDict = translations[language] || translations.en;
-    return (langDict as any)[key] || (translations.en as any)[key] || fallback || String(key);
+  const t = (key: string, fallback?: string): string => {
+    return i18nT(key, { defaultValue: fallback || key });
   };
 
   return (
-    <LanguageContext.Provider value={{ language, setLanguage, t }}>
+    <LanguageContext.Provider value={{ language: currentLanguage, setLanguage, t }}>
       {children}
     </LanguageContext.Provider>
   );

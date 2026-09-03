@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { LanguageProvider } from './context/LanguageContext';
+import { ProductProvider, useProductContext } from './context/ProductContext';
 import { GovBanner } from './components/layout/GovBanner';
 import { Header, MainNavTab } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
@@ -13,11 +14,12 @@ import { ConsultationChatView } from './components/chat/ConsultationChatView';
 import { StandardsQCOExplorer } from './components/compliance/StandardsQCOExplorer';
 import { CertificationSchemesView } from './components/compliance/CertificationSchemesView';
 import { LabDirectoryView } from './components/compliance/LabDirectoryView';
-import { ConsumerHelpView } from './components/compliance/ConsumerHelpView';
+import { HallmarkingView } from './components/hallmarking/HallmarkingView';
+import { JourneyFlowchartView } from './components/flowchart/JourneyFlowchartView';
 import { FeeEstimatorView } from './components/estimator/FeeEstimatorView';
+import { ConsumerHelpView } from './components/compliance/ConsumerHelpView';
 
 import { useChat } from './hooks/useChat';
-import { useProductJourney } from './hooks/useProductJourney';
 import { usePWAInstall } from './hooks/usePWAInstall';
 
 const AppContent: React.FC = () => {
@@ -43,9 +45,7 @@ const AppContent: React.FC = () => {
     guideData,
     isLoading: isJourneyLoading,
     startJourney,
-    askContextualAI,
-    resetJourney,
-  } = useProductJourney();
+  } = useProductContext();
 
   // PWA Installation Hook
   const {
@@ -93,9 +93,6 @@ const AppContent: React.FC = () => {
               /* When user enters a product query, render the 6-Stage Product Certification Guide */
               <div className="px-4 sm:px-6 lg:px-8 py-8">
                 <ProductCertificationGuide
-                  guideData={guideData}
-                  onRestart={resetJourney}
-                  onAskAI={askContextualAI}
                   onJumpToEstimator={() => setActiveTab('estimator')}
                 />
               </div>
@@ -145,14 +142,24 @@ const AppContent: React.FC = () => {
           <LabDirectoryView onConsultLab={handleStartChatPrompt} />
         )}
 
-        {/* VIEW 6: STATUTORY FEE ESTIMATOR */}
+        {/* VIEW 6: HALLMARKING (GOLD & SILVER PURITY / HUID) */}
+        {activeTab === 'hallmarking' && (
+          <HallmarkingView />
+        )}
+
+        {/* VIEW 7: DEMONSTRATION & JOURNEY FLOWCHART */}
+        {activeTab === 'demonstration' && (
+          <JourneyFlowchartView />
+        )}
+
+        {/* VIEW 8: STATUTORY FEE ESTIMATOR */}
         {activeTab === 'estimator' && (
           <FeeEstimatorView onAskAIAboutEstimate={handleStartChatPrompt} />
         )}
 
-        {/* VIEW 7: CONSUMER VERIFICATION & HELP */}
+        {/* VIEW 9: CONSUMER VERIFICATION & HELP */}
         {activeTab === 'consumer' && (
-          <ConsumerHelpView onStartConsultation={handleStartChatPrompt} />
+          <ConsumerHelpView />
         )}
       </main>
 
@@ -174,7 +181,9 @@ const AppContent: React.FC = () => {
 export const App: React.FC = () => {
   return (
     <LanguageProvider>
-      <AppContent />
+      <ProductProvider>
+        <AppContent />
+      </ProductProvider>
     </LanguageProvider>
   );
 };

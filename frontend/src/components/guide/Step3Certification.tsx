@@ -1,8 +1,6 @@
 import React from 'react';
-import { ShieldCheck, Award, FileCheck2, AlertCircle, ArrowRight, ArrowLeft, CheckCircle2, Gift, Info } from 'lucide-react';
+import { ShieldCheck, FileCheck2, AlertCircle, ArrowRight, ArrowLeft, CheckCircle2, Gift } from 'lucide-react';
 import { CertificationDetails } from '../../types/compliance';
-import { StepContextualAI } from './StepContextualAI';
-import { Citation } from '../../types/chat';
 import { useLanguage } from '../../context/LanguageContext';
 
 interface Step3CertificationProps {
@@ -10,7 +8,7 @@ interface Step3CertificationProps {
   certificationDetails: CertificationDetails;
   onNext: () => void;
   onPrev: () => void;
-  onAskAI: (question: string) => Promise<{ reply: string; citations: Citation[] }>;
+  onAskAI?: (question: string) => Promise<{ reply: string; citations: any[] }>;
 }
 
 export const Step3Certification: React.FC<Step3CertificationProps> = ({
@@ -18,7 +16,6 @@ export const Step3Certification: React.FC<Step3CertificationProps> = ({
   certificationDetails,
   onNext,
   onPrev,
-  onAskAI,
 }) => {
   const { t } = useLanguage();
 
@@ -125,18 +122,6 @@ export const Step3Certification: React.FC<Step3CertificationProps> = ({
           <ArrowRight className="w-4 h-4 text-amber-400" />
         </button>
       </div>
-
-      {/* Embedded Contextual AI Assistant */}
-      <StepContextualAI
-        stepName="Step 3: Certification & QCO Scheme"
-        productName={productName}
-        suggestedQuestions={[
-          'What is the penalty for selling non-ISI marked goods under this Quality Control Order?',
-          'What are the annual minimum marking fee rates for this scheme?',
-          'Is testing required for each model variety separately?',
-        ]}
-        onAskQuestion={onAskAI}
-      />
     </div>
   );
 };

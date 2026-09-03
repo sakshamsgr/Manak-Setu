@@ -1,4 +1,4 @@
-import { ChatRequestPayload, RawBackendResponse, ChatNormalizedResponse, Citation } from '../types/chat';
+import { RawBackendResponse, ChatNormalizedResponse, Citation } from '../types/chat';
 
 /**
  * Bureau of Indian Standards API Configuration
@@ -12,7 +12,6 @@ const PROXY_BACKEND_URL = '/api';
  * Determine best available API endpoint URL
  */
 export function getApiBaseUrl(): string {
-  // If user configured VITE_API_BASE_URL env var, prioritize it
   if (import.meta.env.VITE_API_BASE_URL) {
     return import.meta.env.VITE_API_BASE_URL as string;
   }
@@ -51,22 +50,23 @@ export function normalizeChatResponse(data: RawBackendResponse): ChatNormalizedR
 /**
  * Core Chat API Call
  * POST /chat
- * Body: { "session_id": string, "message": string }
+ * Body: { "session_id": string, "message": string, "language": string }
  */
 export async function sendChatMessage(
   sessionId: string, 
-  message: string
+  message: string,
+  language: string = 'en'
 ): Promise<ChatNormalizedResponse> {
-  const payload: ChatRequestPayload = {
+  const payload = {
     session_id: sessionId,
     message: message.trim(),
+    language: language || 'en',
   };
 
   const primaryUrl = `${getApiBaseUrl()}/chat`;
   const fallbackUrl = `${PROXY_BACKEND_URL}/chat`;
 
   try {
-    // Attempt 1: Direct request to backend
     const response = await fetch(primaryUrl, {
       method: 'POST',
       headers: {
@@ -85,7 +85,6 @@ export async function sendChatMessage(
   } catch (directErr: any) {
     console.warn(`[BIS API Client] Direct call to ${primaryUrl} failed. Trying proxy fallback...`, directErr);
 
-    // Attempt 2: Try Vite Proxy fallback if direct fetch had CORS / network block
     try {
       const fallbackResponse = await fetch(fallbackUrl, {
         method: 'POST',
@@ -114,17 +113,19 @@ export async function sendChatMessage(
 /**
  * Multimodal Chat API Call (Image / Document upload for compliance check)
  * POST /chat/multimodal
- * Form Data: session_id, message, file
+ * Form Data: session_id, message, file, language
  */
 export async function sendMultimodalMessage(
   sessionId: string,
   message: string,
-  file: File
+  file: File,
+  language: string = 'en'
 ): Promise<ChatNormalizedResponse> {
   const formData = new FormData();
   formData.append('session_id', sessionId);
   formData.append('message', message || 'Analyze this attachment in accordance with Indian Standards (BIS).');
   formData.append('file', file);
+  formData.append('language', language || 'en');
 
   const primaryUrl = `${getApiBaseUrl()}/chat/multimodal`;
   const fallbackUrl = `${PROXY_BACKEND_URL}/chat/multimodal`;
@@ -143,7 +144,6 @@ export async function sendMultimodalMessage(
     const data: RawBackendResponse = await response.json();
     return normalizeChatResponse(data);
   } catch (err: any) {
-    // Attempt proxy fallback
     const fallbackResponse = await fetch(fallbackUrl, {
       method: 'POST',
       body: formData,
@@ -167,13 +167,12 @@ export async function checkBackendHealth(): Promise<{ online: boolean; latencyMs
     const res = await fetch(`${getApiBaseUrl()}/docs`, {
       method: 'HEAD',
       cache: 'no-cache',
-      mode: 'no-cors', // Opaque check succeeds if server is listening on port
+      mode: 'no-cors',
     });
     const latency = Math.round(performance.now() - start);
     return { online: true, latencyMs: latency };
   } catch (e) {
     try {
-      // Fallback check through Vite proxy
       await fetch(`${PROXY_BACKEND_URL}/docs`, { method: 'HEAD', cache: 'no-cache' });
       return { online: true, latencyMs: Math.round(performance.now() - start) };
     } catch {

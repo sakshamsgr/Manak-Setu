@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
-import { FileText, CheckCircle2, ArrowRight, ArrowLeft, CheckSquare, Square, FolderCheck, Sparkles } from 'lucide-react';
+import { FileText, CheckCircle2, ArrowRight, ArrowLeft, CheckSquare, Square, FolderCheck } from 'lucide-react';
 import { DocumentItem } from '../../types/compliance';
-import { StepContextualAI } from './StepContextualAI';
-import { Citation } from '../../types/chat';
 import { useLanguage } from '../../context/LanguageContext';
 
 interface Step5DocumentsProps {
@@ -10,7 +8,7 @@ interface Step5DocumentsProps {
   documents: DocumentItem[];
   onNext: () => void;
   onPrev: () => void;
-  onAskAI: (question: string) => Promise<{ reply: string; citations: Citation[] }>;
+  onAskAI: (question: string) => Promise<{ reply: string; citations: any[] }>;
 }
 
 export const Step5Documents: React.FC<Step5DocumentsProps> = ({
@@ -18,7 +16,6 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
   documents,
   onNext,
   onPrev,
-  onAskAI,
 }) => {
   const { t } = useLanguage();
   const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set(['doc_1', 'doc_2']));
@@ -134,18 +131,6 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
           <ArrowRight className="w-4 h-4 text-amber-400" />
         </button>
       </div>
-
-      {/* Embedded Contextual AI Assistant */}
-      <StepContextualAI
-        stepName="Step 5: Document Preparation Checklist"
-        productName={productName}
-        suggestedQuestions={[
-          'What format is required for the factory layout drawing and testing room setup?',
-          'What documents are needed to prove in-house chemist qualification?',
-          'What is the validity period for raw material test certificates (MTC)?',
-        ]}
-        onAskQuestion={onAskAI}
-      />
     </div>
   );
 };

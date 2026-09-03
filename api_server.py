@@ -41,7 +41,7 @@ def read_root():
     return {"status": "online", "message": "BIS AI Backend is running"}
 
 # --- 2. Supabase Cloud Vector Search Helper ---
-def supabase_vector_search(query: str, top_k: int = 3):
+def supabase_vector_search(query: str, top_k: int = 4, threshold: float = 0.5):
     response = client.models.embed_content(
         model="gemini-embedding-001",
         contents=query,
@@ -53,12 +53,14 @@ def supabase_vector_search(query: str, top_k: int = 3):
     register_vector(conn)
     cursor = conn.cursor()
 
+    # ADDED STRICT THRESHOLD: Only return chunks that actually match the query
     cursor.execute("""
         SELECT standard_id, page_number, content, embedding <=> %s::vector AS distance
         FROM standard_chunks
+        WHERE embedding <=> %s::vector < %s
         ORDER BY distance ASC
         LIMIT %s;
-    """, (query_embedding, top_k))
+    """, (query_embedding, query_embedding, threshold, top_k))
 
     results = cursor.fetchall()
     cursor.close()
@@ -71,11 +73,11 @@ def supabase_vector_search(query: str, top_k: int = 3):
         combined_docs.append({"text": content, "meta": meta})
 
     return combined_docs
-
 # --- 3. Text Chat Endpoint ---
 class ChatRequest(BaseModel):
     session_id: str
     message: str
+    language: str = "en"
 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
@@ -85,10 +87,24 @@ async def chat_endpoint(req: ChatRequest):
     history = chat_sessions[req.session_id]
     retrieved_chunks = supabase_vector_search(req.message)
     
-    # --- ADDED: Similarity / Content Guard ---
+    # Language Directive
+    lang_directive = ""
+    if req.language == "hi":
+        lang_directive = "\n- IMPORTANT: Provide your entire response strictly in Hindi (हिन्दी) using Devanagari script."
+    elif req.language == "bn":
+        lang_directive = "\n- IMPORTANT: Provide your entire response strictly in Bengali (বাংলা) using Bengali script."
+    else:
+        lang_directive = "\n- IMPORTANT: Provide your response in English."
+
+    # --- Similarity / Content Guard ---
     if not retrieved_chunks or len(retrieved_chunks) == 0:
+        fallback_msg = "This information is not present in the indexed BIS standard documentation."
+        if req.language == "hi":
+            fallback_msg = "यह जानकारी अनुक्रमित बीआईएस मानक दस्तावेज़ों में उपलब्ध नहीं है।"
+        elif req.language == "bn":
+            fallback_msg = "এই তথ্যটি সূচিবদ্ধ বিআইএস মানক নথিতে উপলব্ধ নেই।"
         return {
-            "response": "This information is not present in the indexed BIS standard documentation.",
+            "response": fallback_msg,
             "citations": []
         }
     # ----------------------------------------
@@ -100,7 +116,7 @@ async def chat_endpoint(req: ChatRequest):
     - Do NOT extrapolate, assume, or use any prior training knowledge.
     - If the Context does not explicitly contain the answer, reply EXACTLY with:
     "This information is not present in the indexed BIS standard documentation."
-    - Always include the document name and page number when citing facts.
+    - Always include the document name and page number when citing facts.{lang_directive}
 
     Context:\n{context_text}"""
 
@@ -132,7 +148,8 @@ async def chat_endpoint(req: ChatRequest):
 async def multimodal_chat_endpoint(
     session_id: str = Form(...),
     message: str = Form("Analyze this attachment in accordance with Indian Standards (BIS)."),
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    language: str = Form("en")
 ):
     if session_id not in chat_sessions:
         chat_sessions[session_id] = []
@@ -143,11 +160,25 @@ async def multimodal_chat_endpoint(
 
     retrieved_chunks = supabase_vector_search(message)
     
-    # --- ADDED: Similarity / Content Guard ---
+    # Language Directive
+    lang_directive = ""
+    if language == "hi":
+        lang_directive = "\n- IMPORTANT: Provide your entire response strictly in Hindi (हिन्दी) using Devanagari script."
+    elif language == "bn":
+        lang_directive = "\n- IMPORTANT: Provide your entire response strictly in Bengali (বাংলা) using Bengali script."
+    else:
+        lang_directive = "\n- IMPORTANT: Provide your response in English."
+
+    # --- Similarity / Content Guard ---
     if not retrieved_chunks or len(retrieved_chunks) == 0:
+        fallback_msg = "This information is not present in the indexed BIS standard documentation."
+        if language == "hi":
+            fallback_msg = "यह जानकारी अनुक्रमित बीआईएस मानक दस्तावेज़ों में उपलब्ध नहीं है।"
+        elif language == "bn":
+            fallback_msg = "এই তথ্যটি সূচিবদ্ধ বিআইএস মানক নথিতে উপলব্ধ নেই।"
         return {
             "filename": file.filename,
-            "response": "This information is not present in the indexed BIS standard documentation.",
+            "response": fallback_msg,
             "citations": []
         }
     # ----------------------------------------
@@ -158,10 +189,9 @@ async def multimodal_chat_endpoint(
     CRITICAL RULE: Analyze the uploaded media and answer the query SOLELY using the facts directly stated in the Context below.
     - Do NOT extrapolate, assume, or use any prior training knowledge.
     - If the Context does not explicitly contain the answer, reply EXACTLY with:
-    "This information is not present in the indexed BIS standard documentation."
+    "This information is not present in the indexed BIS standard documentation."{lang_directive}
 
     Context:\n{context_text}"""
-
 
     media_part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
     text_part = types.Part.from_text(text=message)
@@ -188,7 +218,6 @@ async def multimodal_chat_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 # --- 5. Authentication & OTP Endpoints ---
-# Temporary memory store for OTPs (In production, use Redis or Supabase Auth)
 otp_storage = {}
 
 class OTPRequest(BaseModel):
@@ -196,21 +225,16 @@ class OTPRequest(BaseModel):
 
 @app.post("/auth/send-otp")
 async def send_otp(req: OTPRequest):
-    # 1. Generate a random 6-digit OTP
     otp_code = str(random.randint(100000, 999999))
     otp_storage[req.email] = otp_code
     
-    # 2. Setup your Email Credentials (use environment variables in production)
-    # WARNING: You must use an "App Password" here if using Gmail, not your normal password!
     sender_email = os.getenv("SENDER_EMAIL") 
     sender_password = os.getenv("SENDER_PASSWORD") 
     
     if not sender_email or not sender_password:
-        # FALLBACK: If you haven't set up a real email yet, just print it to the terminal!
         print(f"\n[SECURITY] SIMULATED OTP FOR {req.email}: {otp_code}\n")
         return {"message": "Simulated OTP sent to terminal"}
 
-    # 3. Actually send the email via Gmail SMTP
     msg = MIMEText(f"Your official BIS AI Assistant verification code is: {otp_code}\n\nThis code will expire shortly.")
     msg['Subject'] = 'BIS Portal Login Verification'
     msg['From'] = sender_email
@@ -236,7 +260,6 @@ async def verify_otp(req: VerifyRequest):
     if not stored_otp or stored_otp != req.otp:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP code.")
     
-    # Clear OTP after successful login
     del otp_storage[req.email]
     return {"message": "Authentication successful!"}
 
