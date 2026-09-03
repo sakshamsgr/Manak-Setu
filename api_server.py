@@ -110,7 +110,7 @@ async def chat_endpoint(req: ChatRequest):
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.6-flash',
             contents=gemini_history + [
                 types.Content(role="user", parts=[types.Part.from_text(text=req.message)])
             ],
@@ -168,7 +168,7 @@ async def multimodal_chat_endpoint(
 
     try:
         response = client.models.generate_content(
-            model='gemini-2.5-flash',
+            model='gemini-3.6-flash',
             contents=[types.Content(role="user", parts=[media_part, text_part])],
             config=types.GenerateContentConfig(
                 system_instruction=system_instruction,
