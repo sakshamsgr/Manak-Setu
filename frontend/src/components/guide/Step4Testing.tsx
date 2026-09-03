@@ -1,8 +1,6 @@
 import React from 'react';
 import { FlaskConical, CheckCircle2, ArrowRight, ArrowLeft, Building2, Layers, AlertCircle, FileCheck } from 'lucide-react';
 import { TestingDetails } from '../../types/compliance';
-import { StepContextualAI } from './StepContextualAI';
-import { Citation } from '../../types/chat';
 import { useLanguage } from '../../context/LanguageContext';
 
 interface Step4TestingProps {
@@ -10,7 +8,7 @@ interface Step4TestingProps {
   testingDetails: TestingDetails;
   onNext: () => void;
   onPrev: () => void;
-  onAskAI: (question: string) => Promise<{ reply: string; citations: Citation[] }>;
+  onAskAI: (question: string) => Promise<{ reply: string; citations: any[] }>;
 }
 
 export const Step4Testing: React.FC<Step4TestingProps> = ({
@@ -18,7 +16,6 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
   testingDetails,
   onNext,
   onPrev,
-  onAskAI,
 }) => {
   const { t } = useLanguage();
 
@@ -44,37 +41,48 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
           <span>{t('s4RequiredTests')}</span>
         </div>
 
-        <div className="space-y-3">
-          {testingDetails.requiredTests.map((test, idx) => (
-            <div
-              key={idx}
-              className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 hover:border-bis-300 transition-colors"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <h4 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
-                  <span className="w-5 h-5 rounded-full bg-bis-900 text-white text-[10px] font-extrabold flex items-center justify-center">
-                    {idx + 1}
+        {testingDetails.requiredTests && testingDetails.requiredTests.length > 0 ? (
+          <div className="space-y-3">
+            {testingDetails.requiredTests.map((test, idx) => (
+              <div
+                key={idx}
+                className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5 hover:border-bis-300 transition-colors"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-bis-900 text-white text-[10px] font-extrabold flex items-center justify-center">
+                      {idx + 1}
+                    </span>
+                    <span>{test.name}</span>
+                  </h4>
+
+                  <span
+                    className={`px-2 py-0.5 text-[10px] font-extrabold uppercase rounded ${
+                      test.type === 'Routine Test'
+                        ? 'bg-emerald-100 text-emerald-900'
+                        : 'bg-bis-100 text-bis-900'
+                    }`}
+                  >
+                    {test.type}
                   </span>
-                  <span>{test.name}</span>
-                </h4>
+                </div>
 
-                <span
-                  className={`px-2 py-0.5 text-[10px] font-extrabold uppercase rounded ${
-                    test.type === 'Routine Test'
-                      ? 'bg-emerald-100 text-emerald-900'
-                      : 'bg-bis-100 text-bis-900'
-                  }`}
-                >
-                  {test.type}
-                </span>
+                <p className="text-xs text-slate-600 leading-relaxed pl-7">
+                  {test.description}
+                </p>
               </div>
-
-              <p className="text-xs text-slate-600 leading-relaxed pl-7">
-                {test.description}
-              </p>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        ) : (
+          <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-1.5">
+            <p className="text-xs font-bold text-slate-700">
+              No specific test clauses extracted in current document slice.
+            </p>
+            <p className="text-[11px] text-slate-500">
+              Ask the persistent <strong>BIS AI Assistant</strong> on the right to retrieve specific routine and type tests under this standard.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Laboratory Facility & Sampling Protocol */}
@@ -118,18 +126,6 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
           <ArrowRight className="w-4 h-4 text-amber-400" />
         </button>
       </div>
-
-      {/* Embedded Contextual AI Assistant */}
-      <StepContextualAI
-        stepName="Step 4: Mandatory Laboratory Testing"
-        productName={productName}
-        suggestedQuestions={[
-          'Can this test be performed at a recognized commercial laboratory in Delhi / Mumbai?',
-          'What in-house testing apparatus are compulsory inside the factory?',
-          'What is the validity period of an independent laboratory test report?',
-        ]}
-        onAskQuestion={onAskAI}
-      />
     </div>
   );
 };

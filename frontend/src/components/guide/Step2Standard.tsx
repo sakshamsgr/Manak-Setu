@@ -1,7 +1,6 @@
 import React from 'react';
 import { BookOpen, ExternalLink, ArrowRight, ArrowLeft, CheckCircle2, ShieldCheck, Layers, FileText } from 'lucide-react';
 import { StandardDetails } from '../../types/compliance';
-import { StepContextualAI } from './StepContextualAI';
 import { Citation } from '../../types/chat';
 import { CitationsEvidenceGrid } from '../chat/CitationEvidenceCard';
 import { useLanguage } from '../../context/LanguageContext';
@@ -12,7 +11,7 @@ interface Step2StandardProps {
   citations: Citation[];
   onNext: () => void;
   onPrev: () => void;
-  onAskAI: (question: string) => Promise<{ reply: string; citations: Citation[] }>;
+  onAskAI?: (question: string) => Promise<{ reply: string; citations: any[] }>;
 }
 
 export const Step2Standard: React.FC<Step2StandardProps> = ({
@@ -21,7 +20,6 @@ export const Step2Standard: React.FC<Step2StandardProps> = ({
   citations,
   onNext,
   onPrev,
-  onAskAI,
 }) => {
   const { t } = useLanguage();
 
@@ -138,18 +136,6 @@ export const Step2Standard: React.FC<Step2StandardProps> = ({
           <ArrowRight className="w-4 h-4 text-amber-400" />
         </button>
       </div>
-
-      {/* Embedded Contextual AI Assistant */}
-      <StepContextualAI
-        stepName="Step 2: Applicable Indian Standard"
-        productName={productName}
-        suggestedQuestions={[
-          `What are the critical safety clauses under ${standardDetails.code}?`,
-          `Are there any recent amendments or draft revisions published for ${standardDetails.code}?`,
-          'What is the difference between this standard and the international IEC/ISO equivalent?',
-        ]}
-        onAskQuestion={onAskAI}
-      />
     </div>
   );
 };

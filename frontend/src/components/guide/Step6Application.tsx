@@ -1,8 +1,6 @@
 import React from 'react';
-import { FileCheck2, ExternalLink, ArrowLeft, RotateCcw, ShieldCheck, Clock, CheckCircle2, Award, Printer } from 'lucide-react';
+import { ExternalLink, ArrowLeft, RotateCcw, Printer } from 'lucide-react';
 import { ApplicationMilestone } from '../../types/compliance';
-import { StepContextualAI } from './StepContextualAI';
-import { Citation } from '../../types/chat';
 import { useLanguage } from '../../context/LanguageContext';
 
 interface Step6ApplicationProps {
@@ -10,7 +8,7 @@ interface Step6ApplicationProps {
   milestones: ApplicationMilestone[];
   onPrev: () => void;
   onRestart: () => void;
-  onAskAI: (question: string) => Promise<{ reply: string; citations: Citation[] }>;
+  onAskAI?: (question: string) => Promise<{ reply: string; citations: any[] }>;
 }
 
 export const Step6Application: React.FC<Step6ApplicationProps> = ({
@@ -18,7 +16,6 @@ export const Step6Application: React.FC<Step6ApplicationProps> = ({
   milestones,
   onPrev,
   onRestart,
-  onAskAI,
 }) => {
   const { t } = useLanguage();
 
@@ -75,7 +72,6 @@ export const Step6Application: React.FC<Step6ApplicationProps> = ({
         <div className="relative border-l-2 border-bis-200 ml-4 pl-6 sm:pl-8 space-y-6">
           {milestones.map((step) => (
             <div key={step.stepNumber} className="relative group">
-              {/* Timeline circle badge */}
               <div className="absolute -left-[37px] sm:-left-[45px] top-0 w-8 h-8 rounded-full bg-bis-900 text-white font-extrabold text-xs flex items-center justify-center border-4 border-white shadow">
                 {step.stepNumber}
               </div>
@@ -137,18 +133,6 @@ export const Step6Application: React.FC<Step6ApplicationProps> = ({
           </button>
         </div>
       </div>
-
-      {/* Embedded Contextual AI Assistant */}
-      <StepContextualAI
-        stepName="Step 6: Statutory Application Pipeline"
-        productName={productName}
-        suggestedQuestions={[
-          'How do I track my Form-I application progress on Manakonline?',
-          'What happens if a factory sample fails during pre-licence testing?',
-          'How frequently are surveillance market samples drawn after licence grant?',
-        ]}
-        onAskQuestion={onAskAI}
-      />
     </div>
   );
 };

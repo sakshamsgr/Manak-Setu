@@ -1,22 +1,19 @@
 import React from 'react';
-import { Package, Building2, MapPin, Globe, Sparkles, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Package, Building2, MapPin, ArrowRight } from 'lucide-react';
 import { ProductProfile } from '../../types/compliance';
-import { StepContextualAI } from './StepContextualAI';
-import { Citation } from '../../types/chat';
 import { useLanguage } from '../../context/LanguageContext';
 
 interface Step1ProductProps {
   productProfile: ProductProfile;
   onUpdateProfile: (updated: Partial<ProductProfile>) => void;
   onNext: () => void;
-  onAskAI: (question: string) => Promise<{ reply: string; citations: Citation[] }>;
+  onAskAI?: (question: string) => Promise<{ reply: string; citations: any[] }>;
 }
 
 export const Step1Product: React.FC<Step1ProductProps> = ({
   productProfile,
   onUpdateProfile,
   onNext,
-  onAskAI,
 }) => {
   const { t } = useLanguage();
 
@@ -145,18 +142,6 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
           <ArrowRight className="w-4 h-4 text-amber-400" />
         </button>
       </div>
-
-      {/* Embedded Contextual AI Assistant */}
-      <StepContextualAI
-        stepName="Step 1: Product Profile"
-        productName={productProfile.name}
-        suggestedQuestions={[
-          'Does a micro-enterprise qualify for 50% fee concession under Udyam?',
-          'What is the difference for foreign manufacturers under FMCS scheme?',
-          'Can multiple model varieties be covered under a single BIS application?',
-        ]}
-        onAskQuestion={onAskAI}
-      />
     </div>
   );
 };
