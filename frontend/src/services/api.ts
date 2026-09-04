@@ -5,7 +5,7 @@ import { RawBackendResponse, ChatNormalizedResponse, Citation } from '../types/c
  * Defaults to direct FastAPI local backend URL http://127.0.0.1:8000
  * Falls back to /api or Vite proxy if direct cross-origin is restricted.
  */
-const DIRECT_BACKEND_URL = 'http://127.0.0.1:8000';
+const DIRECT_BACKEND_URL = 'http://localhost:8000';
 const PROXY_BACKEND_URL = '/api';
 
 /**

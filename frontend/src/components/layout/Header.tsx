@@ -16,7 +16,8 @@ import {
   GitMerge
 } from 'lucide-react';
 import { checkBackendHealth } from '../../services/api';
-import { useLanguage, Language } from '../../context/LanguageContext';
+import { useLanguage } from '../../context/LanguageContext';
+import { ProfileDropdown } from './ProfileDropdown';
 
 export type MainNavTab = 
   | 'home' 
@@ -101,7 +102,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Backend Status Indicator */}
           <div 
             title={serverStatus.online ? `FastAPI RAG Backend connected (${serverStatus.latency}ms)` : 'Backend connection unavailable'}
-            className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 border border-slate-200 text-slate-700"
+            className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-slate-100 border border-slate-200 text-slate-700"
           >
             {serverStatus.online ? (
               <>
@@ -116,8 +117,8 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </div>
 
-          {/* Functional 3-Language Toggle (EN | ?????? | ?????) */}
-          <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-bold">
+          {/* Functional 3-Language Toggle (EN | हिन्दी | বাংলা) */}
+          <div className="hidden sm:flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-xs font-bold">
             <button
               onClick={() => setLanguage('en')}
               className={`px-2.5 py-1 rounded-lg transition-all text-[11px] ${
@@ -154,12 +155,11 @@ export const Header: React.FC<HeaderProps> = ({
           {!isInstalled && (
             <button
               onClick={onInstallClick}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-gradient-to-r from-bis-800 to-bis-900 hover:from-bis-700 hover:to-bis-800 text-white shadow-sm transition-all transform active:scale-95"
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-gradient-to-r from-bis-800 to-bis-900 hover:from-bis-700 hover:to-bis-800 text-white shadow-sm transition-all transform active:scale-95"
               title="Install BIS AI Assistant PWA on mobile or desktop"
             >
               <Download className="w-3.5 h-3.5 text-amber-400 stroke-[2.5]" />
-              <span className="hidden sm:inline">{t('brand.installApp')}</span>
-              <span className="sm:hidden">Install</span>
+              <span>{t('brand.installApp')}</span>
             </button>
           )}
 
@@ -170,10 +170,13 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
+          {/* PROFILE DROPDOWN (Integrated directly into the flex container) */}
+          <ProfileDropdown />
+
           {/* Mobile Menu Hamburger */}
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg lg:hidden transition-colors"
+            className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg lg:hidden transition-colors ml-1"
             aria-label="Toggle navigation menu"
           >
             {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
