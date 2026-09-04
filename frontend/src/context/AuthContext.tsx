@@ -13,13 +13,15 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [user, setUser] = useState<{ email: string; name: string } | null>(null);
+  // FIX 1: Added dob to the allowed state type
+  const [user, setUser] = useState<{ email: string; name: string; dob?: string } | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   const checkSession = async () => {
     try {
       const data = await authApi.getMe();
-      setUser({ email: data.email, name: data.name });
+      // FIX 2: Actually capture and save the dob from the backend
+      setUser({ email: data.email, name: data.name, dob: data.dob });
       setIsAuthenticated(true);
     } catch {
       setUser(null);
