@@ -21,7 +21,7 @@ export const CertificationSchemesView: React.FC<CertificationSchemesViewProps> =
     {
       id: 'scheme_1',
       title: 'Scheme-I: Product Certification (ISI Mark)',
-      badge: 'Most Popular • Domestic',
+      badge: 'Most Popular â€¢ Domestic',
       color: 'border-bis-300 bg-bis-50/50',
       description: 'Third-party assurance of product quality and safety based on factory auditing, routine in-house testing, and independent laboratory evaluation.',
       keySteps: [
@@ -55,7 +55,7 @@ export const CertificationSchemesView: React.FC<CertificationSchemesViewProps> =
     {
       id: 'hallmarking',
       title: 'Hallmarking Scheme: Gold & Silver Jewellery',
-      badge: 'Precious Metals • Mandatory',
+      badge: 'Precious Metals â€¢ Mandatory',
       color: 'border-yellow-300 bg-yellow-50/40',
       description: 'Purity certification of gold and silver articles to protect consumers against adulteration using 6-digit alphanumeric HUID (Hallmark Unique Identification).',
       keySteps: [

@@ -19,29 +19,26 @@ import { InstallModal } from './components/layout/InstallModal';
 import { HomeHero } from './components/home/HomeHero';
 import { ProductCertificationGuide } from './components/guide/ProductCertificationGuide';
 import { TrustStatsSection } from './components/home/TrustStatsSection';
-import { ConsultationChatView } from './components/chat/ConsultationChatView';
-import { StandardsQCOExplorer } from './components/compliance/StandardsQCOExplorer';
-import { CertificationSchemesView } from './components/compliance/CertificationSchemesView';
-import { LabDirectoryView } from './components/compliance/LabDirectoryView';
-import { HallmarkingView } from './components/hallmarking/HallmarkingView';
-import { JourneyFlowchartView } from './components/flowchart/JourneyFlowchartView';
 import { FeeEstimatorView } from './components/estimator/FeeEstimatorView';
 import { ConsumerHelpView } from './components/compliance/ConsumerHelpView';
 
-// Hooks
+// Hooks & Assistant
 import { useChat } from './hooks/useChat';
 import { usePWAInstall } from './hooks/usePWAInstall';
+import { PersistentAiAssistant, PersistentAssistantContext } from './components/chat/PersistentAiAssistant';
 
 const AuthenticatedAppContent: React.FC = () => {
   const [activeTab, setActiveTab] = useState<MainNavTab>('home');
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   
   const {
     sessions, activeSession, activeSessionId, setActiveSessionId, createNewSession,
     deleteSession, clearCurrentMessages, messages, isLoading: isChatLoading,
     sendMessage: sendChatMessage, sendAttachment: sendChatAttachment,
+    retryLastMessage,
   } = useChat();
 
-  const { guideData, isLoading: isJourneyLoading, startJourney } = useProductContext();
+  const { productProfile, guideData, activeStep, isLoading: isJourneyLoading, startJourney } = useProductContext();
 
   const { isInstallable, isInstalled, isIOS, showInstallModal, setShowInstallModal, triggerInstall } = usePWAInstall();
 
@@ -50,9 +47,23 @@ const AuthenticatedAppContent: React.FC = () => {
     startJourney(query, file);
   };
 
-  const handleStartChatPrompt = (prompt: string) => {
-    setActiveTab('chat');
-    sendChatMessage(prompt);
+  const handleStartChatPrompt = (prompt?: string) => {
+    setIsAssistantOpen(true);
+    if (prompt) {
+      sendChatMessage(prompt, {
+        tab: activeTab,
+        product_name: productProfile?.name || guideData?.productProfile?.name,
+        active_step: activeStep,
+        industry_scale: productProfile?.industryScale,
+      });
+    }
+  };
+
+  const assistantContext: PersistentAssistantContext = {
+    tab: activeTab,
+    productName: productProfile?.name || guideData?.productProfile?.name,
+    activeStep: activeStep,
+    industryScale: productProfile?.industryScale,
   };
 
   return (
@@ -60,8 +71,12 @@ const AuthenticatedAppContent: React.FC = () => {
       <GovBanner />
 
       <Header
-        activeTab={activeTab} onSelectTab={setActiveTab} onOpenInstallModal={() => setShowInstallModal(true)}
-        isInstallable={isInstallable} isInstalled={isInstalled} onInstallClick={triggerInstall}
+        activeTab={activeTab} 
+        onSelectTab={setActiveTab} 
+        onOpenInstallModal={() => setShowInstallModal(true)}
+        isInstallable={isInstallable} 
+        isInstalled={isInstalled} 
+        onInstallClick={triggerInstall}
       />
 
       <main className="flex-1 flex flex-col min-w-0">
@@ -69,7 +84,10 @@ const AuthenticatedAppContent: React.FC = () => {
           <div className="flex-1 flex flex-col space-y-8">
             {guideData ? (
               <div className="px-4 sm:px-6 lg:px-8 py-8">
-                <ProductCertificationGuide onJumpToEstimator={() => setActiveTab('estimator')} />
+                <ProductCertificationGuide 
+                  onJumpToEstimator={() => setActiveTab('estimator')} 
+                  onOpenAssistant={handleStartChatPrompt}
+                />
               </div>
             ) : (
               <>
@@ -79,25 +97,34 @@ const AuthenticatedAppContent: React.FC = () => {
             )}
           </div>
         )}
-        {activeTab === 'chat' && (
-          <ConsultationChatView
-            sessions={sessions} activeSession={activeSession} activeSessionId={activeSessionId}
-            onSelectSession={setActiveSessionId} onNewSession={createNewSession} onDeleteSession={deleteSession}
-            messages={messages} isLoading={isChatLoading} onSendMessage={sendChatMessage}
-            onSendAttachment={sendChatAttachment} onClearChat={clearCurrentMessages}
-          />
-        )}
-        {activeTab === 'standards' && <StandardsQCOExplorer onConsultStandard={handleStartChatPrompt} />}
-        {activeTab === 'certification' && <CertificationSchemesView onStartConsultation={handleStartChatPrompt} />}
-        {activeTab === 'labs' && <LabDirectoryView onConsultLab={handleStartChatPrompt} />}
-        {activeTab === 'hallmarking' && <HallmarkingView />}
-        {activeTab === 'demonstration' && <JourneyFlowchartView />}
         {activeTab === 'estimator' && <FeeEstimatorView onAskAIAboutEstimate={handleStartChatPrompt} />}
         {activeTab === 'consumer' && <ConsumerHelpView />}
       </main>
 
       <Footer />
-      <InstallModal isOpen={showInstallModal} onClose={() => setShowInstallModal(false)} isInstallable={isInstallable} isIOS={isIOS} onNativeInstall={triggerInstall} />
+      
+      {/* Persistent AI Assistant Drawer & Floating Control */}
+      <PersistentAiAssistant
+        isOpen={isAssistantOpen}
+        onToggle={() => setIsAssistantOpen((prev) => !prev)}
+        onClose={() => setIsAssistantOpen(false)}
+        messages={messages}
+        isLoading={isChatLoading}
+        onSendMessage={sendChatMessage}
+        onSendAttachment={sendChatAttachment}
+        onClearChat={clearCurrentMessages}
+        onRetry={retryLastMessage}
+        activeSession={activeSession}
+        contextData={assistantContext}
+      />
+
+      <InstallModal 
+        isOpen={showInstallModal} 
+        onClose={() => setShowInstallModal(false)} 
+        isInstallable={isInstallable} 
+        isIOS={isIOS} 
+        onNativeInstall={triggerInstall} 
+      />
     </div>
   );
 };

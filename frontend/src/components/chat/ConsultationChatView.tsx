@@ -17,6 +17,7 @@ interface ConsultationChatViewProps {
   onSendMessage: (message: string) => void;
   onSendAttachment: (message: string, file: File) => void;
   onClearChat: () => void;
+  onRetry?: () => void;
 }
 
 export const ConsultationChatView: React.FC<ConsultationChatViewProps> = ({
@@ -31,6 +32,7 @@ export const ConsultationChatView: React.FC<ConsultationChatViewProps> = ({
   onSendMessage,
   onSendAttachment,
   onClearChat,
+  onRetry,
 }) => {
   const showQuickPrompts = messages.length <= 1;
 
@@ -110,7 +112,7 @@ export const ConsultationChatView: React.FC<ConsultationChatViewProps> = ({
 
         {showQuickPrompts && <QuickPrompts onSelectPrompt={onSendMessage} />}
 
-        <MessageList messages={messages} isLoading={isLoading} />
+        <MessageList messages={messages} isLoading={isLoading} onRetry={onRetry} />
 
         <ChatInput
           onSendMessage={onSendMessage}

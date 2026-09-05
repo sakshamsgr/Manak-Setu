@@ -1,12 +1,13 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { ChatMessage, ChatSession, Citation } from '../types/chat';
-import { sendChatMessage, sendMultimodalMessage } from '../services/api';
+import { sendChatMessage, sendMultimodalMessage, ApiTimeoutError } from '../services/api';
+import { useLanguage } from '../context/LanguageContext';
 
 const SESSIONS_STORAGE_KEY = 'bis_chat_sessions_v1';
 const ACTIVE_SESSION_KEY = 'bis_active_session_id_v1';
 
 const INITIAL_GREETING = `### Welcome to the Bureau of Indian Standards (BIS) AI Assistant
-*????: ??????????: (Standards Lead the Way)*
+*मानकः पथप्रदर्शकः (Standards Lead the Way)*
 
 I am your official AI compliance and standards advisor. I can help you with:
 - **Finding Applicable Standards:** e.g., Drinking Water (*IS 10500*), Electrical Safety (*IS 302*), Cement (*IS 1489*), Plugs & Sockets (*IS 1293*).
@@ -43,6 +44,9 @@ function createNewSessionObject(id?: string, title?: string): ChatSession {
 }
 
 export function useChat() {
+  const { language, t } = useLanguage();
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
+
   const [sessions, setSessions] = useState<ChatSession[]>(() => {
     try {
       const saved = localStorage.getItem(SESSIONS_STORAGE_KEY);
@@ -84,6 +88,13 @@ export function useChat() {
     } catch (e) {}
   }, [activeSessionId]);
 
+  // Clean up any in-flight request on unmount
+  useEffect(() => {
+    return () => {
+      activeAbortControllerRef.current?.abort();
+    };
+  }, []);
+
   const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
 
   const updateActiveSessionMessages = useCallback((updater: (prev: ChatMessage[]) => ChatMessage[]) => {
@@ -112,6 +123,7 @@ export function useChat() {
   }, [activeSessionId]);
 
   const createNewSession = useCallback(() => {
+    activeAbortControllerRef.current?.abort();
     const newSession = createNewSessionObject();
     setSessions((prev) => [newSession, ...prev]);
     setActiveSessionId(newSession.id);
@@ -120,6 +132,7 @@ export function useChat() {
   }, []);
 
   const deleteSession = useCallback((sessionId: string) => {
+    activeAbortControllerRef.current?.abort();
     setSessions((prev) => {
       const filtered = prev.filter((s) => s.id !== sessionId);
       if (filtered.length === 0) {
@@ -135,13 +148,24 @@ export function useChat() {
   }, [activeSessionId]);
 
   const clearCurrentMessages = useCallback(() => {
+    activeAbortControllerRef.current?.abort();
     updateActiveSessionMessages(() => [DEFAULT_WELCOME_MESSAGE]);
     setErrorMessage(null);
   }, [updateActiveSessionMessages]);
 
-  const sendMessage = async (userText: string) => {
+  const sendMessage = async (userText: string, context?: Record<string, any>) => {
     const trimmed = userText.trim();
+    // Rule 9: Prevent duplicate in-flight requests
     if (!trimmed || isLoading) return;
+
+    // Abort previous in-flight request if any
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+      activeAbortControllerRef.current = null;
+    }
+
+    const controller = new AbortController();
+    activeAbortControllerRef.current = controller;
 
     setErrorMessage(null);
     const userMsgId = `user_${Date.now()}`;
@@ -156,7 +180,13 @@ export function useChat() {
     setIsLoading(true);
 
     try {
-      const response = await sendChatMessage(activeSessionId, trimmed);
+      const response = await sendChatMessage(
+        activeSessionId, 
+        trimmed, 
+        language, 
+        context, 
+        controller.signal
+      );
       
       const assistantMsg: ChatMessage = {
         id: `assistant_${Date.now()}`,
@@ -168,25 +198,47 @@ export function useChat() {
 
       updateActiveSessionMessages((prev) => [...prev, assistantMsg]);
     } catch (err: any) {
+      if (err.name === 'AbortError' && !err.isTimeout) {
+        // Request was intentionally cancelled (e.g. user retried or sent fresh request)
+        return;
+      }
       console.error('Error sending chat message:', err);
-      const errMsgText = err.message || 'An unexpected communication error occurred.';
-      setErrorMessage(errMsgText);
+
+      const isTimeout = err instanceof ApiTimeoutError || err.name === 'ApiTimeoutError' || err.isTimeout;
+      const fallbackNotice = isTimeout
+        ? t('common.aiTimeout')
+        : t('common.apiUnavailable');
+
+      setErrorMessage(fallbackNotice);
 
       const errorMsg: ChatMessage = {
         id: `err_${Date.now()}`,
         role: 'assistant',
-        content: `?? **Connection Notice**: ${errMsgText}\n\n*Please ensure your FastAPI backend is running locally with \`uvicorn api_server:app --reload\` at http://127.0.0.1:8000.*`,
+        content: `⚠️ **${fallbackNotice}**`,
         timestamp: Date.now(),
         isError: true,
+        isTimeout: Boolean(isTimeout),
+        canRetry: true,
       };
       updateActiveSessionMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
+      activeAbortControllerRef.current = null;
     }
   };
 
   const sendAttachment = async (userText: string, file: File) => {
+    // Rule 9: Prevent duplicate submissions
     if (isLoading) return;
+
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+      activeAbortControllerRef.current = null;
+    }
+
+    const controller = new AbortController();
+    activeAbortControllerRef.current = controller;
+
     setErrorMessage(null);
 
     const userMsgId = `user_${Date.now()}`;
@@ -202,7 +254,13 @@ export function useChat() {
     setIsLoading(true);
 
     try {
-      const response = await sendMultimodalMessage(activeSessionId, userText, file);
+      const response = await sendMultimodalMessage(
+        activeSessionId, 
+        userText, 
+        file, 
+        language, 
+        controller.signal
+      );
 
       const assistantMsg: ChatMessage = {
         id: `assistant_${Date.now()}`,
@@ -215,20 +273,31 @@ export function useChat() {
 
       updateActiveSessionMessages((prev) => [...prev, assistantMsg]);
     } catch (err: any) {
+      if (err.name === 'AbortError' && !err.isTimeout) {
+        return;
+      }
       console.error('Multimodal message failed:', err);
-      const errMsgText = err.message || 'Multimodal analysis failed.';
-      setErrorMessage(errMsgText);
+
+      const isTimeout = err instanceof ApiTimeoutError || err.name === 'ApiTimeoutError' || err.isTimeout;
+      const fallbackNotice = isTimeout
+        ? t('common.aiTimeout')
+        : t('common.apiUnavailable');
+
+      setErrorMessage(fallbackNotice);
 
       const errorMsg: ChatMessage = {
         id: `err_${Date.now()}`,
         role: 'assistant',
-        content: `?? **Analysis Error**: ${errMsgText}`,
+        content: `⚠️ **${fallbackNotice}**`,
         timestamp: Date.now(),
         isError: true,
+        isTimeout: Boolean(isTimeout),
+        canRetry: true,
       };
       updateActiveSessionMessages((prev) => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
+      activeAbortControllerRef.current = null;
     }
   };
 
@@ -236,6 +305,14 @@ export function useChat() {
     if (!activeSession) return;
     const lastUserMsg = [...activeSession.messages].reverse().find((m) => m.role === 'user');
     if (lastUserMsg) {
+      // Remove trailing error message before retrying
+      updateActiveSessionMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.isError) {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
       sendMessage(lastUserMsg.content);
     }
   };

@@ -3,8 +3,10 @@ import { ProductCertificationGuideData } from '../types/compliance';
 import { Citation } from '../types/chat';
 import { sendChatMessage, sendMultimodalMessage } from '../services/api';
 import { generateProductCertificationGuideData } from '../services/complianceParser';
+import { useLanguage } from '../context/LanguageContext';
 
 export function useProductJourney() {
+  const { language } = useLanguage();
   const [guideData, setGuideData] = useState<ProductCertificationGuideData | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -24,9 +26,9 @@ export function useProductJourney() {
     try {
       let response;
       if (file) {
-        response = await sendMultimodalMessage(sessionId, trimmed, file);
+        response = await sendMultimodalMessage(sessionId, trimmed, file, language);
       } else {
-        response = await sendChatMessage(sessionId, trimmed);
+        response = await sendChatMessage(sessionId, trimmed, language);
       }
 
       const parsedData = generateProductCertificationGuideData(
@@ -45,7 +47,7 @@ export function useProductJourney() {
       // Graceful fallback so user can still navigate the guide
       const fallbackData = generateProductCertificationGuideData(
         trimmed,
-        `?? **Notice**: ${msg}\n\n*Please ensure your FastAPI server is running on http://127.0.0.1:8000.*`,
+        `⚠️ **Notice**: ${msg}\n\n*Please ensure your FastAPI server is running on http://127.0.0.1:8000.*`,
         [],
         file?.name
       );
@@ -53,18 +55,18 @@ export function useProductJourney() {
     } finally {
       setIsLoading(false);
     }
-  }, [sessionId]);
+  }, [sessionId, language]);
 
   /**
    * Contextual AI question handler within any step
    */
   const askContextualAI = useCallback(async (contextualQuestion: string): Promise<{ reply: string; citations: Citation[] }> => {
-    const res = await sendChatMessage(sessionId, contextualQuestion);
+    const res = await sendChatMessage(sessionId, contextualQuestion, language);
     return {
       reply: res.reply,
       citations: res.citations || [],
     };
-  }, [sessionId]);
+  }, [sessionId, language]);
 
   const resetJourney = useCallback(() => {
     setGuideData(null);

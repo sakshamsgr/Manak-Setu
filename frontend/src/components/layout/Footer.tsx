@@ -8,66 +8,46 @@ export const Footer: React.FC = () => {
   return (
     <footer className="bg-slate-900 text-slate-300 border-t border-slate-800 text-xs mt-auto">
       {/* Upper Grid */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 md:grid-cols-4 gap-8">
-        {/* Col 1: About BIS */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10 grid grid-cols-1 md:grid-cols-3 gap-8">
+        {/* Col 1: Manak Setu Brand */}
         <div className="space-y-3">
-          <div className="bg-white p-2.5 rounded-xl w-fit shadow-sm">
-            <img 
-              src="/bis-logo.png" 
-              alt="Bureau of Indian Standards" 
-              className="h-9 w-auto object-contain" 
-            />
+          <div className="flex items-center gap-2">
+            <span className="text-base font-extrabold tracking-tight text-white font-serif">MANAK SETU</span>
+            <span className="text-xs font-bold text-amber-400 font-sans">‡§Æ‡§æ‡§®‡§ï ‡§∏‡•á‡§§‡•Å</span>
           </div>
           <p className="text-[11px] text-slate-400 leading-relaxed">
-            The National Standards Body of India established under the BIS Act 2016 for standardisation, marking, and quality certification of goods.
+            National Standards Compliance & Advisory Portal for Indian Standards, Certification Schemes, and Statutory Regulations under the BIS Act 2016.
           </p>
         </div>
 
-        {/* Col 2: Regulatory Schemes */}
-        <div className="space-y-2.5">
-          <div className="font-bold text-xs uppercase tracking-wider text-white">
-            Certification Schemes
-          </div>
-          <ul className="space-y-1.5 text-[11px] text-slate-400">
-            <li>ï Scheme-I (Product Certification / ISI Mark)</li>
-            <li>ï Scheme-II (Compulsory Registration - CRS)</li>
-            <li>ï Scheme-IV (Certificate of Conformity)</li>
-            <li>ï Hallmarking of Gold & Silver Artefacts (HUID)</li>
-            <li>ï Foreign Manufacturers Certification Scheme (FMCS)</li>
-            <li>ï Management Systems Certification (ISO 9001/14001)</li>
-          </ul>
-        </div>
-
-        {/* Col 3: Key Services */}
+        {/* Col 2: Interactive Statutory Services */}
         <div className="space-y-2.5">
           <div className="font-bold text-xs uppercase tracking-wider text-white">
             Statutory Services
           </div>
-          <ul className="space-y-1.5 text-[11px] text-slate-400">
+          <ul className="space-y-2 text-[11px] text-slate-400">
             <li>
-              <a href="https://www.manakonline.in" target="_blank" rel="noopener noreferrer" className="hover:text-amber-300 flex items-center gap-1">
+              <a href="https://www.manakonline.in" target="_blank" rel="noopener noreferrer" className="hover:text-amber-300 flex items-center gap-1 transition-colors">
                 <span>e-BIS Portal (Manakonline)</span>
                 <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </li>
             <li>
-              <a href="https://www.services.bis.gov.in" target="_blank" rel="noopener noreferrer" className="hover:text-amber-300 flex items-center gap-1">
+              <a href="https://www.services.bis.gov.in" target="_blank" rel="noopener noreferrer" className="hover:text-amber-300 flex items-center gap-1 transition-colors">
                 <span>Know Your Standards Directory</span>
                 <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </li>
             <li>
-              <a href="https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care" target="_blank" rel="noopener noreferrer" className="hover:text-amber-300 flex items-center gap-1">
+              <a href="https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care" target="_blank" rel="noopener noreferrer" className="hover:text-amber-300 flex items-center gap-1 transition-colors">
                 <span>BIS Care Mobile App (Verify CML/HUID)</span>
                 <ExternalLink className="w-2.5 h-2.5" />
               </a>
             </li>
-            <li>ï LIMS Laboratory Management System</li>
-            <li>ï Quality Control Orders (QCO) Gazette Registry</li>
           </ul>
         </div>
 
-        {/* Col 4: Contact & Headquarters */}
+        {/* Col 3: Interactive Support & Headquarters */}
         <div className="space-y-2.5">
           <div className="font-bold text-xs uppercase tracking-wider text-white">
             Headquarters & Support
@@ -79,11 +59,11 @@ export const Footer: React.FC = () => {
             </div>
             <div className="flex items-center gap-2">
               <Phone className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>Toll Free: 1800-11-1200 / +91-11-23230131</span>
+              <a href="tel:1800111200" className="hover:text-amber-300 transition-colors">Toll Free: 1800-11-1200 / +91-11-23230131</a>
             </div>
             <div className="flex items-center gap-2">
               <Mail className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-              <span>helpdesk@bis.gov.in</span>
+              <a href="mailto:helpdesk@bis.gov.in" className="hover:text-amber-300 transition-colors">helpdesk@bis.gov.in</a>
             </div>
           </div>
         </div>
@@ -92,13 +72,11 @@ export const Footer: React.FC = () => {
       {/* Bottom Copyright Strip */}
       <div className="bg-slate-950 px-4 sm:px-8 py-3 border-t border-slate-800 text-[11px] text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
         <div>
-          © 2026 Bureau of Indian Standards (BIS) ï AI Compliance Assistant (SIH 2026)
+          ¬© 2026 Manak Setu ‚Ä¢ Bureau of Indian Standards (BIS)
         </div>
         <div className="flex items-center gap-4">
           <span>BIS Act 2016 Compliant</span>
-          <span>ï</span>
-          <span>Vector RAG with Gemini & Supabase</span>
-          <span>ï</span>
+          <span>‚Ä¢</span>
           <span className="text-amber-400/80 font-mono">v2.0 PWA</span>
         </div>
       </div>

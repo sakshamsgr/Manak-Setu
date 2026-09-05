@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, Building2, MapPin, ArrowRight } from 'lucide-react';
+import { Package, Building2, ArrowRight } from 'lucide-react';
 import { ProductProfile } from '../../types/compliance';
 import { useLanguage } from '../../context/LanguageContext';
 
@@ -90,17 +90,31 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
             </select>
           </div>
 
-          {/* Manufacturing Facility Location */}
+          {/* Product Sub-type / Intended Use */}
           <div className="space-y-1.5">
             <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-              <MapPin className="w-3.5 h-3.5 text-bis-700" />
-              <span>{t('s1Location')}</span>
+              <Package className="w-3.5 h-3.5 text-bis-700" />
+              <span>{t('s1SubType', 'Product Sub-type / Intended Use')}</span>
             </label>
             <input
               type="text"
-              value={productProfile.manufacturingLocation}
-              onChange={(e) => onUpdateProfile({ manufacturingLocation: e.target.value })}
-              placeholder="e.g. Noida, Uttar Pradesh / Mumbai, Maharashtra"
+              value={productProfile.subType || ''}
+              onChange={(e) => onUpdateProfile({ subType: e.target.value, intendedUse: e.target.value })}
+              placeholder="e.g. Immersion Water Heater, Portable, Class I"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+            />
+          </div>
+
+          {/* Key Material / Technical Specifications */}
+          <div className="space-y-1.5 md:col-span-2">
+            <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+              <span>{t('s1TechnicalSpecs', 'Key Material / Technical Specifications (optional)')}</span>
+            </label>
+            <input
+              type="text"
+              value={productProfile.technicalSpecs || ''}
+              onChange={(e) => onUpdateProfile({ technicalSpecs: e.target.value })}
+              placeholder="e.g. 230V AC, 1500W, Copper Sheathed Tubular Heating Element"
               className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
             />
           </div>

@@ -9,9 +9,11 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'bis-logo.png', 'pwa-192x192.png', 'pwa-512x512.png', 'robots.txt'],
       manifest: {
-        name: 'Bureau of Indian Standards AI Assistant',
-        short_name: 'BIS Assistant',
-        description: 'Official AI Compliance Guide for Indian Standards (IS), Product Certification Schemes, Laboratory Testing, and Quality Control Orders.',
+        name: 'Manak Setu — BIS AI Compliance Portal',
+        short_name: 'Manak Setu',
+        description: 'Manak Setu: Official AI Compliance Guide for Indian Standards (IS), Product Certification Schemes, Laboratory Testing, and Quality Control Orders.',
+        start_url: '/',
+        scope: '/',
         theme_color: '#0B3B60',
         background_color: '#F8FAFC',
         display: 'standalone',
@@ -35,6 +37,35 @@ export default defineConfig({
           }
         ]
       },
+      workbox: {
+        globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        runtimeCaching: [
+          {
+            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
+            handler: 'StaleWhileRevalidate',
+            options: {
+              cacheName: 'google-fonts-stylesheets',
+              cacheableResponse: {
+                statuses: [0, 200]
+              }
+            }
+          },
+          {
+            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'google-fonts-webfonts',
+              cacheableResponse: {
+                statuses: [0, 200]
+              },
+              expiration: {
+                maxEntries: 30,
+                maxAgeSeconds: 60 * 60 * 24 * 365 // 1 year
+              }
+            }
+          }
+        ]
+      },
       devOptions: {
         enabled: true
       }
@@ -45,10 +76,13 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://127.0.0.1:8000',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/api/, '')
+        changeOrigin: true
       },
       '/chat': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true
+      },
+      '/auth': {
         target: 'http://127.0.0.1:8000',
         changeOrigin: true
       }

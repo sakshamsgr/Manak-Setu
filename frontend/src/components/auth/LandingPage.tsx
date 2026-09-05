@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Mail, KeyRound, User, Loader2, Calendar, Eye, EyeOff } from 'lucide-react';
+import { ShieldCheck, Mail, KeyRound, User, Loader2, Calendar, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { authApi } from '../../services/authApi';
 import { useAuth } from '../../context/AuthContext';
 
@@ -83,15 +83,15 @@ export const LandingPage: React.FC = () => {
     try {
       const res = await authApi.forgotPassword({ email });
       setSuccessMsg(res.message);
-      setStep('verify-forgot');
+      setStep('verify-forgot'); // Only proceed if successful
     } catch (err: any) {
-      setStep('verify-forgot');
+      // If backend throws 404, show error and stay on this page
+      setError(err.message || 'Failed to send reset code.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Fixed handler to properly route the user to the new password screen
   const handleVerifyForgot = (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
@@ -159,6 +159,9 @@ export const LandingPage: React.FC = () => {
 
           {step === 'login' && (
             <form onSubmit={handleLogin} className="space-y-4 animate-fade-in">
+              <button type="button" onClick={() => { clearMessages(); setStep('intro'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+                <ArrowLeft className="w-3 h-3" /> Back
+              </button>
               <div className="text-center mb-6">
                 <h2 className="text-2xl font-bold text-slate-900">Login to BIS AI Assistant</h2>
               </div>
@@ -199,6 +202,9 @@ export const LandingPage: React.FC = () => {
 
           {step === 'signup' && (
             <form onSubmit={handleSignup} className="space-y-3 animate-fade-in">
+              <button type="button" onClick={() => { clearMessages(); setStep('intro'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+                <ArrowLeft className="w-3 h-3" /> Back
+              </button>
               <div className="text-center mb-4"><h2 className="text-xl font-bold text-slate-900">Create your Account</h2></div>
               
               <div className="relative"><User className="w-5 h-5 text-slate-400 absolute left-4 top-3" /><input type="text" required placeholder="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" /></div>
@@ -223,9 +229,11 @@ export const LandingPage: React.FC = () => {
             </form>
           )}
 
-          {/* SIGNUP OTP FORM */}
           {step === 'verify-signup' && (
             <form onSubmit={handleVerifySignup} className="space-y-5 animate-fade-in">
+              <button type="button" onClick={() => { clearMessages(); setStep('signup'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+                <ArrowLeft className="w-3 h-3" /> Back
+              </button>
               <h2 className="text-2xl font-bold text-slate-900">Verify your email</h2>
               <p className="text-slate-500 text-sm">Enter the 6-digit OTP sent to <strong className="text-slate-800">{email}</strong>.</p>
               <div className="relative">
@@ -241,22 +249,27 @@ export const LandingPage: React.FC = () => {
 
           {step === 'forgot' && (
             <form onSubmit={handleForgotPassword} className="space-y-4 animate-fade-in">
-              <button type="button" onClick={() => setStep('login')} className="text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 block">← Back to Login</button>
+              <button type="button" onClick={() => { clearMessages(); setStep('login'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+                <ArrowLeft className="w-3 h-3" /> Back to Login
+              </button>
               <h2 className="text-2xl font-bold text-slate-900">Forgot Password</h2>
               <p className="text-slate-500 text-sm">Enter your registered email address to receive a secure OTP.</p>
               <div className="relative">
                 <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
                 <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all" />
               </div>
+              {error && <p className="text-xs text-rose-500 font-bold">{error}</p>}
               <button type="submit" disabled={isLoading} className="w-full py-3.5 bg-bis-900 hover:bg-bis-800 text-white font-bold rounded-xl shadow transition flex justify-center">
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send Reset Code'}
               </button>
             </form>
           )}
 
-          {/* RESET OTP FORM */}
           {step === 'verify-forgot' && (
             <form onSubmit={handleVerifyForgot} className="space-y-5 animate-fade-in">
+              <button type="button" onClick={() => { clearMessages(); setStep('forgot'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+                <ArrowLeft className="w-3 h-3" /> Back
+              </button>
               <h2 className="text-2xl font-bold text-slate-900">Verify Reset Code</h2>
               <p className="text-slate-500 text-sm">Enter the 6-digit code sent to <strong className="text-slate-800">{email}</strong>.</p>
               <div className="relative">
@@ -272,6 +285,9 @@ export const LandingPage: React.FC = () => {
 
           {step === 'reset-password' && (
             <form onSubmit={handleResetPassword} className="space-y-4 animate-fade-in">
+              <button type="button" onClick={() => { clearMessages(); setStep('verify-forgot'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+                <ArrowLeft className="w-3 h-3" /> Back
+              </button>
               <h2 className="text-2xl font-bold text-slate-900">Set New Password</h2>
               <div className="relative">
                 <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3" />

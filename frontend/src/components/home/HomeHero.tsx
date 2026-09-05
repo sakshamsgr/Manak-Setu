@@ -147,12 +147,12 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const effectiveQuery = query.trim() || (productName ? `Compliance requirements for ${productName}` : '');
-    if ((!effectiveQuery && !selectedFile) || isLoading) return;
+    if (isLoading) return;
+    const effectiveQuery = query.trim() || (productName.trim() ? `Compliance requirements for ${productName.trim()}` : 'Compliance requirements for electrical appliances');
 
     // Persist all captured profile info to ProductContext so Step 1 has it pre-filled
     updateProductProfile({
-      name: productName.trim() || effectiveQuery.slice(0, 50),
+      name: productName.trim() || query.trim().slice(0, 50) || 'Electrical Appliance',
       category,
       industryScale: industryScale as any,
       manufacturingLocation: location,
@@ -290,17 +290,17 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
 
                 <button
                   type="submit"
-                  disabled={(!query.trim() && !productName.trim() && !selectedFile) || isLoading}
-                  className={`px-5 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md ${
-                    (query.trim() || productName.trim() || selectedFile) && !isLoading
-                      ? 'bg-gradient-to-r from-bis-800 to-bis-900 hover:from-bis-700 hover:to-bis-800 text-white shadow-bis-900/20 transform active:scale-95'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                  disabled={isLoading}
+                  className={`px-6 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md active:scale-95 ${
+                    isLoading
+                      ? 'bg-bis-800 text-white cursor-wait opacity-90'
+                      : 'bg-gradient-to-r from-bis-850 via-bis-900 to-slate-900 hover:from-bis-750 hover:to-bis-850 text-white shadow-bis-950/25 hover:shadow-lg cursor-pointer'
                   }`}
                 >
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
-                      <span>{t('hero.analyzing')}</span>
+                      <span>{t('hero.analyzing') || 'Analyzing'}</span>
                     </>
                   ) : (
                     <>
@@ -427,102 +427,6 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
               ))}
             </div>
           </div>
-        </div>
-
-        {/* 6 Core Quick Navigation Action Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <button
-            onClick={() => onSelectNavTab('standards')}
-            className="p-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-bis-300 shadow-sm text-left transition-all group space-y-1"
-          >
-            <div className="p-1.5 rounded-xl bg-bis-50 text-bis-800 w-fit group-hover:bg-bis-800 group-hover:text-white transition-colors">
-              <BookOpen className="w-4 h-4" />
-            </div>
-            <div className="font-extrabold text-xs text-slate-900">
-              {t('nav.standards')}
-            </div>
-            <p className="text-[10px] text-slate-500 leading-tight truncate">
-              IS Catalog & QCOs
-            </p>
-          </button>
-
-          <button
-            onClick={() => onSelectNavTab('certification')}
-            className="p-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-bis-300 shadow-sm text-left transition-all group space-y-1"
-          >
-            <div className="p-1.5 rounded-xl bg-amber-50 text-amber-800 w-fit group-hover:bg-amber-500 group-hover:text-bis-950 transition-colors">
-              <ShieldCheck className="w-4 h-4" />
-            </div>
-            <div className="font-extrabold text-xs text-slate-900">
-              {t('nav.certification')}
-            </div>
-            <p className="text-[10px] text-slate-500 leading-tight truncate">
-              Scheme-I & CRS
-            </p>
-          </button>
-
-          <button
-            onClick={() => onSelectNavTab('hallmarking')}
-            className="p-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-amber-400 shadow-sm text-left transition-all group space-y-1"
-          >
-            <div className="p-1.5 rounded-xl bg-amber-100 text-amber-900 w-fit group-hover:bg-amber-600 group-hover:text-white transition-colors">
-              <Gem className="w-4 h-4" />
-            </div>
-            <div className="font-extrabold text-xs text-slate-900">
-              {t('nav.hallmarking')}
-            </div>
-            <p className="text-[10px] text-slate-500 leading-tight truncate">
-              Gold Purity & HUID
-            </p>
-          </button>
-
-          <button
-            onClick={() => onSelectNavTab('labs')}
-            className="p-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-bis-300 shadow-sm text-left transition-all group space-y-1"
-          >
-            <div className="p-1.5 rounded-xl bg-emerald-50 text-emerald-800 w-fit group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-              <FlaskConical className="w-4 h-4" />
-            </div>
-            <div className="font-extrabold text-xs text-slate-900">
-              {t('nav.labs')}
-            </div>
-            <p className="text-[10px] text-slate-500 leading-tight truncate">
-              Testing Centers
-            </p>
-          </button>
-
-          <button
-            onClick={() => onSelectNavTab('estimator')}
-            className="p-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-bis-300 shadow-sm text-left transition-all group space-y-1"
-          >
-            <div className="p-1.5 rounded-xl bg-purple-50 text-purple-800 w-fit group-hover:bg-purple-700 group-hover:text-white transition-colors">
-              <Calculator className="w-4 h-4" />
-            </div>
-            <div className="font-extrabold text-xs text-slate-900 flex items-center justify-between">
-              <span>{t('nav.estimator')}</span>
-              <span className="text-[8px] font-bold px-1 bg-amber-100 text-amber-900 rounded">
-                MSME
-              </span>
-            </div>
-            <p className="text-[10px] text-slate-500 leading-tight truncate">
-              Tariff & Subsidy
-            </p>
-          </button>
-
-          <button
-            onClick={() => onSelectNavTab('consumer')}
-            className="p-3.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200 hover:border-bis-300 shadow-sm text-left transition-all group space-y-1"
-          >
-            <div className="p-1.5 rounded-xl bg-rose-50 text-rose-800 w-fit group-hover:bg-rose-700 group-hover:text-white transition-colors">
-              <UserCheck className="w-4 h-4" />
-            </div>
-            <div className="font-extrabold text-xs text-slate-900">
-              {t('nav.consumer')}
-            </div>
-            <p className="text-[10px] text-slate-500 leading-tight truncate">
-              Verify Marks & Rights
-            </p>
-          </button>
         </div>
       </div>
     </div>

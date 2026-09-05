@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChatMessage } from '../../types/chat';
 import { MessageItem } from './MessageItem';
 import { ShieldCheck, ChevronDown, Sparkles, BookOpen, Loader2 } from 'lucide-react';
@@ -6,9 +7,11 @@ import { ShieldCheck, ChevronDown, Sparkles, BookOpen, Loader2 } from 'lucide-re
 interface MessageListProps {
   messages: ChatMessage[];
   isLoading: boolean;
+  onRetry?: () => void;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading }) => {
+export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onRetry }) => {
+  const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -32,11 +35,15 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading })
     <div
       ref={containerRef}
       onScroll={handleScroll}
-      className="flex-1 overflow-y-auto p-2 sm:p-4 md:p-6 space-y-2 custom-scrollbar relative"
+      className="flex-1 overflow-y-auto p-3 space-y-3 custom-scrollbar relative"
     >
-      <div className="max-w-4xl mx-auto space-y-4">
+      <div className="w-full space-y-3">
         {messages.map((message) => (
-          <MessageItem key={message.id} message={message} />
+          <MessageItem 
+            key={message.id} 
+            message={message} 
+            onRetry={onRetry} 
+          />
         ))}
 
         {/* Loading Indicator */}
@@ -48,7 +55,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading })
             <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-none p-4 shadow-soft max-w-[80%] space-y-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-bis-800">
                 <Loader2 className="w-4 h-4 animate-spin text-bis-600" />
-                <span>Searching Supabase Vector Database & Citing Indian Standards...</span>
+                <span>{t('common.loading') || 'Searching BIS Standards Repository & Regulatory Guidelines...'}</span>
               </div>
               <div className="space-y-1.5 pt-1">
                 <div className="h-2.5 bg-slate-100 rounded-full w-4/5 animate-pulse"></div>

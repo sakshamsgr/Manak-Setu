@@ -11,16 +11,20 @@ import {
   FileText,
   User,
   ShieldCheck,
-  AlertTriangle
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import { ChatMessage } from '../../types/chat';
 import { SourcesList } from './CitationCard';
 
 interface MessageItemProps {
   message: ChatMessage;
+  onRetry?: () => void;
 }
 
-export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
+export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry }) => {
+  const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
@@ -60,31 +64,31 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
 
   return (
     <div
-      className={`flex gap-3 sm:gap-4 py-3 sm:py-4 px-2 sm:px-4 animate-fade-in ${
+      className={`flex gap-2 sm:gap-3 py-1.5 px-1 animate-fade-in ${
         isUser ? 'flex-row-reverse' : 'flex-row'
       }`}
     >
       {/* Avatar Icon */}
       <div className="shrink-0">
         {isUser ? (
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-slate-800 text-slate-200 flex items-center justify-center shadow-sm">
-            <User className="w-4 h-4 sm:w-5 sm:h-5" />
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-slate-800 text-slate-200 flex items-center justify-center shadow-sm">
+            <User className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
         ) : (
-          <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-gradient-to-br from-bis-800 to-bis-950 text-amber-400 border border-amber-400/30 flex items-center justify-center shadow-md">
-            <ShieldCheck className="w-4 h-4 sm:w-5 sm:h-5" />
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-gradient-to-br from-bis-800 to-bis-950 text-amber-400 border border-amber-400/30 flex items-center justify-center shadow-md">
+            <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </div>
         )}
       </div>
 
       {/* Message Content Container */}
-      <div className={`flex flex-col max-w-[88%] sm:max-w-[80%] ${isUser ? 'items-end' : 'items-start'}`}>
+      <div className={`flex flex-col max-w-[90%] sm:max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
         {/* Role & Timestamp Header */}
         <div className="flex items-center gap-2 mb-1 px-1 text-[11px] text-slate-400">
           <span className="font-semibold text-slate-600">
             {isUser ? 'You' : 'BIS AI Compliance Assistant'}
           </span>
-          <span>•</span>
+          <span>â€¢</span>
           <span>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
           {message.attachmentName && (
             <span className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
@@ -96,7 +100,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
 
         {/* Message Bubble */}
         <div
-          className={`rounded-2xl p-4 sm:p-5 shadow-sm text-sm sm:text-[15px] leading-relaxed transition-all ${
+          className={`rounded-2xl p-3 sm:p-3.5 shadow-xs text-xs sm:text-sm leading-relaxed transition-all ${
             isUser
               ? 'bg-bis-800 text-white rounded-tr-none'
               : isError
@@ -107,10 +111,28 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message }) => {
           {isUser ? (
             <div className="whitespace-pre-wrap font-normal">{message.content}</div>
           ) : (
-            <div className="prose prose-slate max-w-none prose-p:leading-relaxed prose-headings:text-bis-900 prose-a:text-bis-600 prose-strong:text-slate-900 prose-code:text-bis-700 prose-code:bg-bis-50 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-table:border prose-table:border-slate-200 prose-th:bg-slate-100 prose-th:p-2 prose-td:p-2 prose-td:border prose-td:border-slate-200">
+            <div className="prose prose-sm prose-slate max-w-none prose-p:leading-relaxed prose-headings:text-bis-900 prose-a:text-bis-600 prose-strong:text-slate-900 prose-code:text-bis-700 prose-code:bg-bis-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-table:overflow-x-auto prose-table:block prose-table:border prose-table:border-slate-200 prose-th:bg-slate-100 prose-th:p-1.5 prose-td:p-1.5 prose-td:border prose-td:border-slate-200">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {message.content}
               </ReactMarkdown>
+            </div>
+          )}
+
+          {/* Retry Action for Error or Timeout */}
+          {isError && (onRetry || message.canRetry) && (
+            <div className="mt-3 pt-2.5 border-t border-rose-200/80 flex items-center justify-between">
+              <span className="text-xs text-rose-700">
+                {message.isTimeout ? t('common.aiTimeout') : t('common.apiUnavailable')}
+              </span>
+              {onRetry && (
+                <button
+                  onClick={onRetry}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded-lg text-xs font-semibold shadow-xs transition-all cursor-pointer transform active:scale-95"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{t('common.retry') || 'Retry'}</span>
+                </button>
+              )}
             </div>
           )}
 

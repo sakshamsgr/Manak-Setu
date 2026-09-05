@@ -12,8 +12,8 @@ export const en = {
     "subTitle": "National Standards Body of India • Intelligent Compliance Assistant",
     "motto": "मानक: पथप्रदर्शक: (Standards Lead the Way)",
     "tagAI": "AI Compliance Portal",
-    "ragActive": "RAG Server Active",
-    "ragOffline": "Backend Offline",
+    "ragActive": "Services Active",
+    "ragOffline": "Services Offline",
     "installApp": "Install App",
     "appInstalled": "App Installed"
   },
@@ -24,12 +24,11 @@ export const en = {
     "certification": "Certification",
     "labs": "Testing & Labs",
     "hallmarking": "Hallmarking",
-    "demonstration": "Journey Flow",
     "estimator": "Fee Estimator",
     "consumer": "Consumer Help"
   },
   "hero": {
-    "badge": "National Standards Compliance Gateway • SIH Problem Statement 26107",
+    "badge": "National Standards Compliance & Advisory Portal • Manak Setu",
     "titlePrefix": "Your Guide to",
     "titleStandards": "BIS Standards",
     "titleAnd": "&",
@@ -50,7 +49,7 @@ export const en = {
     "voiceQuery": "Voice Query",
     "listening": "Listening...",
     "startGuide": "Start Product Certification Guide",
-    "analyzing": "Analyzing Standards with RAG Backend...",
+    "analyzing": "Analyzing",
     "samplePrompts": "Explore Common Product Queries:"
   },
   "productGuide": {
@@ -150,11 +149,41 @@ export const en = {
     "sendBtn": "Send",
     "upload": "Upload PDF / Image",
     "noInfoTitle": "Information Not Available in Current Document Index",
-    "noInfoDesc": "This specific detail was not retrieved from the active BIS vector knowledge base. You can ask a focused question in the AI Assistant on the right."
+    "noInfoDesc": "This specific detail was not retrieved from the active BIS vector knowledge base. You can ask a focused question in the AI Assistant on the right.",
+    "floatingBtn": "✨ Ask Manak Setu AI",
+    "close": "Close Assistant",
+    "resetChat": "Clear Conversation",
+    "contextProduct": "Active Product Context",
+    "contextEstimator": "Fee Estimator Context",
+    "contextConsumer": "Consumer Help Context",
+    "contextGeneral": "General Standards Context"
   },
   "common": {
     "verifiedSource": "Verified BIS Source",
-    "page": "Page"
+    "page": "Page",
+    "loading": "Loading details...",
+    "empty": "No details available yet. This information will be updated in future.",
+    "apiUnavailable": "Unable to connect right now. Please try again.",
+    "aiTimeout": "AI response is taking longer than expected. Please try again.",
+    "retry": "Retry",
+    "online": "Online",
+    "offline": "Offline",
+    "viewSource": "View Official Source Document",
+    "close": "Close",
+    "back": "Back"
+  },
+  "estimator": {
+    "title": "BIS Fee & Compliance Cost Estimator",
+    "subtitle": "Authoritative database-driven cost calculations with official MSME concessions",
+    "selectStandard": "Select Indian Standard",
+    "scale": "Scale of Enterprise",
+    "varieties": "Number of Product Varieties / Batches",
+    "inspectionDays": "Estimated Inspection Days",
+    "calculateBtn": "Calculate Fee Schedule",
+    "receiptTitle": "Estimated Cost Breakdown & Itemized Receipt",
+    "statutoryNote": "Fee calculations are pulled directly from official BIS gazette schedules and lab charges.",
+    "year1Total": "Year 1 Estimated Outlay (incl. 18% GST)",
+    "year2Recurring": "Year 2 Recurring / Renewal Outlay"
   },
   "s1Title": "Step 1: Product Profile & Parameters",
   "s1Subtitle": "Confirm product category and manufacturing parameters to tailor BIS compliance.",
@@ -162,6 +191,8 @@ export const en = {
   "s1Category": "Product Industry Category",
   "s1Scale": "Scale of Industry (MSME Concession)",
   "s1Location": "Manufacturing Facility Location",
+  "s1SubType": "Product Sub-type / Intended Use",
+  "s1TechnicalSpecs": "Key Material / Technical Specifications (optional)",
   "s1Domestic": "Domestic Indian Manufacturer",
   "s1Foreign": "Foreign Manufacturer (FMCS)",
   "s1MicroScale": "Micro Enterprise (50% Concession with Udyam)",

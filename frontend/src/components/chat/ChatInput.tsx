@@ -204,7 +204,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
         {/* Footer info note */}
         <div className="flex items-center justify-between text-[11px] text-slate-400 px-2">
           <span>Press <strong>Enter</strong> to send, <strong>Shift+Enter</strong> for newline</span>
-          <span className="hidden sm:inline">Powered by Hybrid Vector RAG • Supabase & Gemini</span>
+          <span className="hidden sm:inline">Official Bureau of Indian Standards (BIS) Portal</span>
         </div>
       </form>
     </div>

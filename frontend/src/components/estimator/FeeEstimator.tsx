@@ -14,7 +14,6 @@ import {
   Layers,
   FileCheck
 } from 'lucide-react';
-import confetti from 'canvas-confetti';
 import { SchemeType, IndustryScale, FeeCalculationResult, FeeItemBreakdown } from '../../types/estimator';
 
 interface FeeEstimatorProps {
@@ -237,16 +236,6 @@ export const FeeEstimator: React.FC<FeeEstimatorProps> = ({ onAskAIAboutEstimate
     };
 
     setResult(calculated);
-
-    if (totalConcessionSaved > 0) {
-      try {
-        confetti({
-          particleCount: 60,
-          spread: 60,
-          origin: { y: 0.7 },
-        });
-      } catch {}
-    }
   };
 
   const handlePrint = () => {
@@ -444,7 +433,7 @@ export const FeeEstimator: React.FC<FeeEstimatorProps> = ({ onAskAIAboutEstimate
                           ?{item.baseAmount.toLocaleString('en-IN')}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono font-semibold text-emerald-600">
-                          {item.discountAmount > 0 ? `- ?${item.discountAmount.toLocaleString('en-IN')}` : '—'}
+                          {item.discountAmount > 0 ? `- ?${item.discountAmount.toLocaleString('en-IN')}` : 'â€”'}
                         </td>
                         <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900">
                           ?{item.netAmount.toLocaleString('en-IN')}

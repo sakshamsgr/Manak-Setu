@@ -106,7 +106,7 @@ export const Step2Standard: React.FC<Step2StandardProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
             {standardDetails.relatedStandards.map((rs, i) => (
               <div key={i} className="p-2.5 rounded-xl bg-white border border-slate-200 text-xs font-medium text-slate-800">
-                • {rs}
+                â€¢ {rs}
               </div>
             ))}
           </div>

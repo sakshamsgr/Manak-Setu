@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
@@ -14,24 +14,29 @@ import {
   User, 
   Copy, 
   Check, 
-  ChevronDown,
-  ChevronUp
+  ChevronDown, 
+  ChevronUp, 
+  RotateCcw 
 } from 'lucide-react';
 import { Citation } from '../../types/chat';
 import { CitationsEvidenceGrid } from '../chat/CitationEvidenceCard';
 import { useLanguage } from '../../context/LanguageContext';
+import { ApiTimeoutError } from '../../services/api';
 
 interface Message {
   role: 'user' | 'assistant';
   text: string;
   citations?: Citation[];
   filename?: string;
+  isError?: boolean;
+  isTimeout?: boolean;
+  canRetry?: boolean;
 }
 
 interface RightSideAssistantProps {
   productName: string;
   activeStepName: string;
-  onAskQuestion: (question: string, file?: File) => Promise<{ reply: string; citations: Citation[] }>;
+  onAskQuestion: (question: string, file?: File, signal?: AbortSignal) => Promise<{ reply: string; citations: Citation[] }>;
 }
 
 export const RightSideAssistant: React.FC<RightSideAssistantProps> = ({
@@ -54,6 +59,16 @@ export const RightSideAssistant: React.FC<RightSideAssistantProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (activeAbortControllerRef.current) {
+        activeAbortControllerRef.current.abort();
+        activeAbortControllerRef.current = null;
+      }
+    };
+  }, []);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -62,6 +77,13 @@ export const RightSideAssistant: React.FC<RightSideAssistantProps> = ({
   const handleSend = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
     if ((!query && !selectedFile) || isLoading) return;
+
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+      activeAbortControllerRef.current = null;
+    }
+    const controller = new AbortController();
+    activeAbortControllerRef.current = controller;
 
     const fileToUpload = selectedFile || undefined;
     const userMessageText = query || (fileToUpload ? `Uploaded ${fileToUpload.name} for compliance analysis` : '');
@@ -81,7 +103,7 @@ export const RightSideAssistant: React.FC<RightSideAssistantProps> = ({
     setIsLoading(true);
 
     try {
-      const res = await onAskQuestion(query, fileToUpload);
+      const res = await onAskQuestion(query, fileToUpload, controller.signal);
       setMessages((prev) => [
         ...prev,
         {
@@ -92,15 +114,39 @@ export const RightSideAssistant: React.FC<RightSideAssistantProps> = ({
       ]);
       setTimeout(scrollToBottom, 100);
     } catch (err: any) {
+      if (err.name === 'AbortError' && !err.isTimeout) {
+        return;
+      }
+      const isTimeout = err instanceof ApiTimeoutError || err.name === 'ApiTimeoutError' || err.isTimeout;
+      const errorNotice = isTimeout ? t('common.aiTimeout') : t('common.apiUnavailable');
+
       setMessages((prev) => [
         ...prev,
         {
           role: 'assistant',
-          text: `?? **Notice**: ${err.message || 'Unable to retrieve standard answer from RAG server.'}`,
+          text: `⚠️ **${errorNotice}**`,
+          isError: true,
+          isTimeout: Boolean(isTimeout),
+          canRetry: true,
         },
       ]);
     } finally {
       setIsLoading(false);
+      activeAbortControllerRef.current = null;
+    }
+  };
+
+  const handleRetry = () => {
+    const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
+    if (lastUserMsg) {
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        if (last && last.isError) {
+          return prev.slice(0, -1);
+        }
+        return prev;
+      });
+      handleSend(lastUserMsg.text);
     }
   };
 
@@ -126,7 +172,7 @@ export const RightSideAssistant: React.FC<RightSideAssistantProps> = ({
           className="p-3.5 bg-bis-900 text-white rounded-full shadow-xl flex items-center gap-2 font-bold text-xs border-2 border-amber-400 active:scale-95 transition-all"
         >
           <MessageSquare className="w-5 h-5 text-amber-400" />
-          <span>BIS Assistant</span>
+          <span>{t('assistant.title') || 'Manak Setu AI'}</span>
           {isMobileOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
         </button>
       </div>
@@ -151,14 +197,14 @@ export const RightSideAssistant: React.FC<RightSideAssistantProps> = ({
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               </h3>
               <p className="text-[10px] text-slate-300 truncate max-w-[200px]">
-                {productName || 'Product'} � {activeStepName}
+                {productName || 'Product'} • {activeStepName}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase bg-amber-500 text-bis-950 rounded">
-              RAG Active
+            <span className="px-2 py-0.5 text-[9px] font-extrabold uppercase bg-emerald-600 text-white rounded">
+              {t('common.online') || 'Online'}
             </span>
             {isMobileOpen && (
               <button
@@ -232,7 +278,24 @@ export const RightSideAssistant: React.FC<RightSideAssistantProps> = ({
                   </div>
                 )}
 
-                {msg.role === 'assistant' && (
+                {msg.role === 'assistant' && msg.isError && (
+                  <div className="pt-2 border-t border-rose-200 flex items-center justify-between">
+                    <span className="text-[11px] text-rose-700 font-medium">
+                      {msg.isTimeout ? t('common.aiTimeout') : t('common.apiUnavailable')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={handleRetry}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white rounded text-[11px] font-semibold shadow-2xs transition-colors cursor-pointer"
+                      title={t('common.retry') || 'Retry'}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span>{t('common.retry') || 'Retry'}</span>
+                    </button>
+                  </div>
+                )}
+
+                {msg.role === 'assistant' && !msg.isError && (
                   <div className="flex justify-end pt-1">
                     <button
                       onClick={() => handleCopy(msg.text, idx)}
@@ -250,7 +313,7 @@ export const RightSideAssistant: React.FC<RightSideAssistantProps> = ({
           {isLoading && (
             <div className="flex items-center gap-2 text-xs text-bis-800 p-2 font-medium bg-white rounded-xl border border-slate-200 animate-pulse">
               <Loader2 className="w-3.5 h-3.5 animate-spin text-bis-700" />
-              <span>Querying BIS vector documentation...</span>
+              <span>{t('common.loading') || 'Loading details...'}</span>
             </div>
           )}
 
