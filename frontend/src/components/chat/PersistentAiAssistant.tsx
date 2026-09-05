@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ShieldCheck, 
   Sparkles, 
@@ -6,7 +6,8 @@ import {
   RotateCcw, 
   Tag, 
   ChevronRight, 
-  Layers
+  Layers,
+  GripHorizontal
 } from 'lucide-react';
 import { ChatMessage, ChatSession } from '../../types/chat';
 import { MessageList } from './MessageList';
@@ -34,6 +35,32 @@ interface PersistentAiAssistantProps {
   contextData?: PersistentAssistantContext;
 }
 
+// Default desktop dimensions (sm:w-[410px] sm:h-[600px])
+const DEFAULT_WIDTH = 410;
+const DEFAULT_HEIGHT = 600;
+const MIN_WIDTH = 340;
+const MIN_HEIGHT = 380;
+
+const getClampedDimensions = (w: number, h: number) => {
+  if (typeof window === 'undefined') return { width: w, height: h };
+  const maxW = Math.max(MIN_WIDTH, Math.min(960, window.innerWidth - 32));
+  const maxH = Math.max(MIN_HEIGHT, Math.min(960, window.innerHeight - 48));
+  return {
+    width: Math.min(Math.max(w, MIN_WIDTH), maxW),
+    height: Math.min(Math.max(h, MIN_HEIGHT), maxH),
+  };
+};
+
+const getClampedPosition = (x: number, y: number, w: number, h: number) => {
+  if (typeof window === 'undefined') return { x, y };
+  const maxX = Math.max(8, window.innerWidth - w - 8);
+  const maxY = Math.max(8, window.innerHeight - h - 8);
+  return {
+    x: Math.min(Math.max(8, x), maxX),
+    y: Math.min(Math.max(8, y), maxY),
+  };
+};
+
 export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
   isOpen,
   onToggle,
@@ -49,6 +76,46 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
 }) => {
   const { t } = useLanguage();
 
+  // Mobile viewport detection
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 640;
+  });
+
+  // Resizable dimensions (width & height)
+  const [size, setSize] = useState<{ width: number; height: number }>(() => {
+    if (typeof window === 'undefined') return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+    try {
+      const saved = sessionStorage.getItem('bis_assistant_size');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return getClampedDimensions(parsed.width, parsed.height);
+      }
+    } catch {}
+    return getClampedDimensions(DEFAULT_WIDTH, DEFAULT_HEIGHT);
+  });
+
+  // Movable position coordinates (x & y)
+  const [position, setPosition] = useState<{ x: number; y: number }>(() => {
+    if (typeof window === 'undefined') return { x: 100, y: 100 };
+    try {
+      const saved = sessionStorage.getItem('bis_assistant_pos');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return getClampedPosition(parsed.x, parsed.y, DEFAULT_WIDTH, DEFAULT_HEIGHT);
+      }
+    } catch {}
+    const initW = Math.min(DEFAULT_WIDTH, window.innerWidth - 32);
+    const initH = Math.min(DEFAULT_HEIGHT, window.innerHeight - 48);
+    return {
+      x: Math.max(8, window.innerWidth - initW - 24),
+      y: Math.max(8, window.innerHeight - initH - 24),
+    };
+  });
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+
   // Close on Escape key press
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -59,6 +126,245 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
+
+  // Adjust bounds on window resize
+  useEffect(() => {
+    const handleWindowResize = () => {
+      const mobile = window.innerWidth < 640;
+      setIsMobile(mobile);
+      if (!mobile) {
+        setSize((prev) => {
+          const clamped = getClampedDimensions(prev.width, prev.height);
+          setPosition((pos) => getClampedPosition(pos.x, pos.y, clamped.width, clamped.height));
+          return clamped;
+        });
+      }
+    };
+    window.addEventListener('resize', handleWindowResize);
+    return () => window.removeEventListener('resize', handleWindowResize);
+  }, []);
+
+  // Move behavior (drag header to move)
+  const dragRef = useRef<{
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+
+  const handleHeaderMouseDown = (e: React.MouseEvent) => {
+    if (isMobile) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('a')) return;
+
+    e.preventDefault();
+    dragRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      originX: position.x,
+      originY: position.y,
+    };
+    setIsDragging(true);
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleHeaderTouchStart = (e: React.TouchEvent) => {
+    if (isMobile) return;
+    const target = e.target as HTMLElement;
+    if (target.closest('button') || target.closest('a')) return;
+
+    const touch = e.touches[0];
+    dragRef.current = {
+      startX: touch.clientX,
+      startY: touch.clientY,
+      originX: position.x,
+      originY: position.y,
+    };
+    setIsDragging(true);
+    document.body.style.userSelect = 'none';
+  };
+
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!dragRef.current) return;
+      const dx = e.clientX - dragRef.current.startX;
+      const dy = e.clientY - dragRef.current.startY;
+      const newPos = getClampedPosition(
+        dragRef.current.originX + dx,
+        dragRef.current.originY + dy,
+        size.width,
+        size.height
+      );
+      setPosition(newPos);
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!dragRef.current || !e.touches[0]) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const dx = touch.clientX - dragRef.current.startX;
+      const dy = touch.clientY - dragRef.current.startY;
+      const newPos = getClampedPosition(
+        dragRef.current.originX + dx,
+        dragRef.current.originY + dy,
+        size.width,
+        size.height
+      );
+      setPosition(newPos);
+    };
+
+    const handleDragEnd = () => {
+      setIsDragging(false);
+      dragRef.current = null;
+      document.body.style.userSelect = '';
+      try {
+        sessionStorage.setItem('bis_assistant_pos', JSON.stringify(position));
+      } catch {}
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleDragEnd);
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleDragEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleDragEnd);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleDragEnd);
+      document.body.style.userSelect = '';
+    };
+  }, [isDragging, size.width, size.height, position]);
+
+  // Resize behavior (drag corners or edges to resize)
+  type ResizeHandle = 'tl' | 'tr' | 'bl' | 'br' | 't' | 'b' | 'l' | 'r';
+
+  const resizeRef = useRef<{
+    handle: ResizeHandle;
+    startX: number;
+    startY: number;
+    startW: number;
+    startH: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
+
+  const handleResizeStart = (handle: ResizeHandle, clientX: number, clientY: number) => {
+    if (isMobile) return;
+    resizeRef.current = {
+      handle,
+      startX: clientX,
+      startY: clientY,
+      startW: size.width,
+      startH: size.height,
+      originX: position.x,
+      originY: position.y,
+    };
+    setIsResizing(true);
+    document.body.style.userSelect = 'none';
+  };
+
+  useEffect(() => {
+    if (!isResizing) return;
+
+    const handleResizeMove = (clientX: number, clientY: number) => {
+      if (!resizeRef.current) return;
+      const { handle, startX, startY, startW, startH, originX, originY } = resizeRef.current;
+      const dx = clientX - startX;
+      const dy = clientY - startY;
+
+      const minW = MIN_WIDTH;
+      const maxW = Math.max(minW, Math.min(960, window.innerWidth - 32));
+      const minH = MIN_HEIGHT;
+      const maxH = Math.max(minH, Math.min(960, window.innerHeight - 48));
+
+      let newW = startW;
+      let newH = startH;
+      let newX = originX;
+      let newY = originY;
+
+      if (handle.includes('r')) {
+        newW = Math.min(Math.max(startW + dx, minW), maxW);
+        if (newX + newW > window.innerWidth - 8) {
+          newW = Math.max(minW, window.innerWidth - 8 - newX);
+        }
+      }
+
+      if (handle.includes('l')) {
+        const rawW = startW - dx;
+        const clampedW = Math.min(Math.max(rawW, minW), maxW);
+        const actualDeltaX = startW - clampedW;
+        const proposedX = originX + actualDeltaX;
+        if (proposedX >= 8) {
+          newW = clampedW;
+          newX = proposedX;
+        } else {
+          newX = 8;
+          newW = Math.max(minW, originX + startW - 8);
+        }
+      }
+
+      if (handle.includes('b')) {
+        newH = Math.min(Math.max(startH + dy, minH), maxH);
+        if (newY + newH > window.innerHeight - 8) {
+          newH = Math.max(minH, window.innerHeight - 8 - newY);
+        }
+      }
+
+      if (handle.includes('t')) {
+        const rawH = startH - dy;
+        const clampedH = Math.min(Math.max(rawH, minH), maxH);
+        const actualDeltaY = startH - clampedH;
+        const proposedY = originY + actualDeltaY;
+        if (proposedY >= 8) {
+          newH = clampedH;
+          newY = proposedY;
+        } else {
+          newY = 8;
+          newH = Math.max(minH, originY + startH - 8);
+        }
+      }
+
+      setSize({ width: newW, height: newH });
+      setPosition({ x: newX, y: newY });
+    };
+
+    const onMouseMove = (e: MouseEvent) => {
+      handleResizeMove(e.clientX, e.clientY);
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches[0]) {
+        e.preventDefault();
+        handleResizeMove(e.touches[0].clientX, e.touches[0].clientY);
+      }
+    };
+
+    const onResizeEnd = () => {
+      setIsResizing(false);
+      resizeRef.current = null;
+      document.body.style.userSelect = '';
+      try {
+        sessionStorage.setItem('bis_assistant_size', JSON.stringify(size));
+        sessionStorage.setItem('bis_assistant_pos', JSON.stringify(position));
+      } catch {}
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onResizeEnd);
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    window.addEventListener('touchend', onResizeEnd);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onResizeEnd);
+      window.removeEventListener('touchmove', onTouchMove);
+      window.removeEventListener('touchend', onResizeEnd);
+      document.body.style.userSelect = '';
+    };
+  }, [isResizing, size, position]);
 
   // Context-sensitive quick suggestions
   const getContextualPrompts = () => {
@@ -151,17 +457,95 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
         />
       )}
 
-      {/* 2. Right-Side Persistent Assistant Drawer Panel */}
+      {/* 2. Persistent Assistant Panel (Movable & Resizable on Desktop) */}
       {isOpen && (
         <aside
           aria-label="BIS AI Assistant Panel"
-          className="fixed z-50 flex flex-col bg-white border border-slate-200/90 shadow-2xl overflow-hidden transition-all duration-300 animate-slide-in
-            inset-x-3 bottom-3 top-16 rounded-2xl
-            sm:inset-auto sm:right-6 sm:bottom-6 sm:w-[410px] sm:max-w-[calc(100vw-2rem)] sm:h-[600px] sm:max-h-[calc(100vh-5rem)] sm:rounded-2xl"
+          style={!isMobile ? {
+            left: `${position.x}px`,
+            top: `${position.y}px`,
+            width: `${size.width}px`,
+            height: `${size.height}px`,
+          } : undefined}
+          className={`fixed z-50 flex flex-col bg-white border border-slate-200/90 shadow-2xl overflow-hidden rounded-2xl ${
+            isMobile
+              ? 'inset-x-3 bottom-3 top-16 animate-slide-in'
+              : ''
+          } ${isDragging || isResizing ? 'transition-none select-none ring-2 ring-indigo-500/20' : 'transition-shadow duration-200'}`}
         >
-          {/* Panel Header Strip */}
-          <div className="p-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
-            <div className="flex items-center gap-2.5">
+          {/* Resize Handles (Desktop Only) */}
+          {!isMobile && (
+            <>
+              {/* Corner Handles */}
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('tl', e.clientX, e.clientY); }}
+                className="absolute -top-1.5 -left-1.5 w-4 h-4 cursor-nwse-resize z-50 group flex items-center justify-center"
+                title="Resize"
+              >
+                <div className="w-2 h-2 rounded-full bg-slate-400/0 group-hover:bg-indigo-500/60 transition-colors" />
+              </div>
+
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('tr', e.clientX, e.clientY); }}
+                className="absolute -top-1.5 -right-1.5 w-4 h-4 cursor-nesw-resize z-50 group flex items-center justify-center"
+                title="Resize"
+              >
+                <div className="w-2 h-2 rounded-full bg-slate-400/0 group-hover:bg-indigo-500/60 transition-colors" />
+              </div>
+
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('bl', e.clientX, e.clientY); }}
+                className="absolute -bottom-1.5 -left-1.5 w-4 h-4 cursor-nesw-resize z-50 group flex items-center justify-center"
+                title="Resize"
+              >
+                <div className="w-2 h-2 rounded-full bg-slate-400/0 group-hover:bg-indigo-500/60 transition-colors" />
+              </div>
+
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('br', e.clientX, e.clientY); }}
+                className="absolute -bottom-1 -right-1 w-5 h-5 cursor-nwse-resize z-50 group flex items-end justify-end p-0.5"
+                title="Resize"
+              >
+                {/* Subtle native-like corner grip dots / lines */}
+                <svg width="8" height="8" viewBox="0 0 8 8" className="text-slate-400/70 group-hover:text-indigo-600 transition-colors pointer-events-none">
+                  <path d="M7 1L1 7M7 4L4 7M7 7L7 7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </div>
+
+              {/* Edge Handles */}
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('t', e.clientX, e.clientY); }}
+                className="absolute -top-1 left-4 right-4 h-2 cursor-ns-resize z-40"
+                title="Resize"
+              />
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('b', e.clientX, e.clientY); }}
+                className="absolute -bottom-1 left-4 right-4 h-2 cursor-ns-resize z-40"
+                title="Resize"
+              />
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('l', e.clientX, e.clientY); }}
+                className="absolute -left-1 top-4 bottom-4 w-2 cursor-ew-resize z-40"
+                title="Resize"
+              />
+              <div
+                onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('r', e.clientX, e.clientY); }}
+                className="absolute -right-1 top-4 bottom-4 w-2 cursor-ew-resize z-40"
+                title="Resize"
+              />
+            </>
+          )}
+
+          {/* Panel Header Strip - Draggable to move */}
+          <div 
+            onMouseDown={handleHeaderMouseDown}
+            onTouchStart={handleHeaderTouchStart}
+            className={`p-3.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0 select-none ${
+              isMobile ? '' : 'cursor-grab active:cursor-grabbing'
+            }`}
+            title={isMobile ? undefined : 'Click and drag to reposition'}
+          >
+            <div className="flex items-center gap-2.5 pointer-events-none">
               <div className="p-1.5 rounded-xl bg-bis-800 text-amber-400 shadow-xs">
                 <ShieldCheck className="w-4 h-4" />
               </div>
@@ -181,6 +565,8 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
             <div className="flex items-center gap-1.5">
               <button
                 type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
                 onClick={onClearChat}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                 title={t('assistant.resetChat') || 'Clear Conversation'}
@@ -190,6 +576,8 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
 
               <button
                 type="button"
+                onMouseDown={(e) => e.stopPropagation()}
+                onTouchStart={(e) => e.stopPropagation()}
                 onClick={onClose}
                 className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
                 title={t('assistant.close') || 'Close Assistant'}
@@ -200,7 +588,7 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
           </div>
 
           {/* Active Context Bar */}
-          <div className="px-3.5 py-1.5 bg-bis-50/70 border-b border-bis-100 flex items-center justify-between text-[11px] text-bis-900 shrink-0">
+          <div className="px-3.5 py-1.5 bg-bis-50/70 border-b border-bis-100 flex items-center justify-between text-[11px] text-bis-900 shrink-0 select-none">
             <div className="flex items-center gap-1.5 font-medium truncate">
               <Tag className="w-3 h-3 text-bis-700 shrink-0" />
               {contextData?.tab === 'home' && contextData.productName ? (
@@ -223,7 +611,7 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
 
           {/* Quick Contextual Question Pills (shown if fewer than 3 messages) */}
           {messages.length <= 2 && (
-            <div className="p-2 bg-slate-50 border-b border-slate-200 overflow-x-auto custom-scrollbar flex gap-1.5 shrink-0">
+            <div className="p-2 bg-slate-50 border-b border-slate-200 overflow-x-auto custom-scrollbar flex gap-1.5 shrink-0 select-none">
               {contextualPrompts.map((q, i) => (
                 <button
                   key={i}

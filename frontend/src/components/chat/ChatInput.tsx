@@ -174,7 +174,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             placeholder={
               isRecording
                 ? 'Listening to speech...'
-                : 'Ask anything about Indian Standards (IS), ISI marking, testing fees, QCO orders...'
+                : 'Ask anything about BIS...'
             }
             rows={1}
             className="flex-1 bg-transparent border-0 focus:ring-0 focus:outline-none resize-none py-1 px-1 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 min-h-[30px] max-h-[100px] custom-scrollbar leading-relaxed"
