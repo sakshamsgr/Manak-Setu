@@ -14,7 +14,11 @@ import {
   getStandardProcess, 
   sendChatMessage, 
   sendMultimodalMessage, 
-  ApiTimeoutError 
+  ApiTimeoutError,
+  SavedProductGuideItem,
+  saveUserProductGuide,
+  getUserSavedGuides,
+  deleteUserSavedGuide
 } from '../services/api';
 import { generateProductCertificationGuideData } from '../services/complianceParser';
 import { useLanguage } from './LanguageContext';
@@ -25,11 +29,16 @@ interface ProductContextType {
   activeStep: number;
   isLoading: boolean;
   errorMessage: string | null;
+  savedGuides: SavedProductGuideItem[];
   setActiveStep: (step: number) => void;
   updateProductProfile: (updated: Partial<ProductProfile>) => void;
   startJourney: (query: string, file?: File) => Promise<void>;
   askContextualAI: (question: string, file?: File, signal?: AbortSignal) => Promise<{ reply: string; citations: Citation[] }>;
   resetJourney: () => void;
+  saveJourney: () => Promise<{ success: boolean; message: string }>;
+  loadSavedGuide: (saved: SavedProductGuideItem) => void;
+  deleteSavedGuide: (id: string) => Promise<void>;
+  fetchSavedGuides: () => Promise<void>;
 }
 
 const defaultProfile: ProductProfile = {
@@ -50,6 +59,7 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [activeStep, setActiveStep] = useState<number>(1);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [savedGuides, setSavedGuides] = useState<SavedProductGuideItem[]>([]);
   const [sessionId] = useState<string>(() => `product_session_${Date.now()}`);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
 
@@ -401,6 +411,119 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setErrorMessage(null);
   }, []);
 
+  const fetchSavedGuides = useCallback(async () => {
+    try {
+      const backendGuides = await getUserSavedGuides();
+      let localGuides: SavedProductGuideItem[] = [];
+      try {
+        const stored = localStorage.getItem('manaksetu_saved_guides');
+        if (stored) localGuides = JSON.parse(stored);
+      } catch (e) {
+        console.warn('Error reading local saved guides:', e);
+      }
+
+      const map = new Map<string, SavedProductGuideItem>();
+      backendGuides.forEach((g) => map.set(g.product_name.toLowerCase(), g));
+      localGuides.forEach((g) => {
+        if (!map.has(g.product_name.toLowerCase())) {
+          map.set(g.product_name.toLowerCase(), g);
+        }
+      });
+      setSavedGuides(Array.from(map.values()));
+    } catch (err) {
+      console.warn('Failed to fetch saved guides:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSavedGuides();
+  }, [fetchSavedGuides]);
+
+  const saveJourney = useCallback(async (): Promise<{ success: boolean; message: string }> => {
+    if (!guideData && !productProfile.name) {
+      return { success: false, message: 'No product guide data to save.' };
+    }
+
+    const prodName = productProfile.name || guideData?.productProfile.name || 'Product';
+    const stdCode = guideData?.standardDetails?.code || '';
+    const currentQuery = guideData?.query || prodName;
+
+    const itemToSave: SavedProductGuideItem = {
+      id: `local_${Date.now()}`,
+      product_name: prodName,
+      standard_code: stdCode,
+      active_step: activeStep,
+      query: currentQuery,
+      product_profile: productProfile,
+      guide_data: guideData,
+      updated_at: new Date().toISOString(),
+    };
+
+    let backendSaved = false;
+    try {
+      const res = await saveUserProductGuide({
+        product_name: prodName,
+        standard_code: stdCode,
+        active_step: activeStep,
+        query: currentQuery,
+        product_profile: productProfile,
+        guide_data: guideData,
+      });
+      if (res.success && res.id) {
+        itemToSave.id = res.id;
+        backendSaved = true;
+      }
+    } catch (apiErr) {
+      console.info('Backend save skipped or unauthenticated, persisting locally:', apiErr);
+    }
+
+    try {
+      const stored = localStorage.getItem('manaksetu_saved_guides');
+      const list: SavedProductGuideItem[] = stored ? JSON.parse(stored) : [];
+      const filtered = list.filter((g) => g.product_name.toLowerCase() !== prodName.toLowerCase());
+      filtered.unshift(itemToSave);
+      localStorage.setItem('manaksetu_saved_guides', JSON.stringify(filtered));
+    } catch (lsErr) {
+      console.warn('Local storage save error:', lsErr);
+    }
+
+    await fetchSavedGuides();
+    return {
+      success: true,
+      message: backendSaved ? 'Progress saved to your account!' : 'Progress saved successfully!'
+    };
+  }, [guideData, productProfile, activeStep, fetchSavedGuides]);
+
+  const loadSavedGuide = useCallback((saved: SavedProductGuideItem) => {
+    if (saved.product_profile) {
+      setProductProfile(saved.product_profile);
+    }
+    if (saved.guide_data) {
+      setGuideData(saved.guide_data);
+    }
+    setActiveStep(saved.active_step || 1);
+    setErrorMessage(null);
+  }, []);
+
+  const deleteSavedGuide = useCallback(async (guideId: string) => {
+    try {
+      await deleteUserSavedGuide(guideId);
+    } catch (e) {
+      // ignore
+    }
+    try {
+      const stored = localStorage.getItem('manaksetu_saved_guides');
+      if (stored) {
+        const list: SavedProductGuideItem[] = JSON.parse(stored);
+        const filtered = list.filter((g) => g.id !== guideId);
+        localStorage.setItem('manaksetu_saved_guides', JSON.stringify(filtered));
+      }
+    } catch (e) {
+      // ignore
+    }
+    await fetchSavedGuides();
+  }, [fetchSavedGuides]);
+
   return (
     <ProductContext.Provider
       value={{
@@ -409,11 +532,16 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         activeStep,
         isLoading,
         errorMessage,
+        savedGuides,
         setActiveStep,
         updateProductProfile,
         startJourney,
         askContextualAI,
         resetJourney,
+        saveJourney,
+        loadSavedGuide,
+        deleteSavedGuide,
+        fetchSavedGuides,
       }}
     >
       {children}

@@ -481,3 +481,110 @@ export async function checkBackendHealth(): Promise<{ online: boolean; latencyMs
   }
 }
 
+/**
+ * User Saved Product Guide Models & APIs (Issue 4 & 5)
+ */
+export interface SavedProductGuideItem {
+  id: string;
+  product_name: string;
+  standard_code?: string;
+  active_step: number;
+  query?: string;
+  product_profile: any;
+  guide_data: any;
+  updated_at: string;
+}
+
+export async function saveUserProductGuide(data: {
+  product_name: string;
+  standard_code?: string;
+  active_step?: number;
+  query?: string;
+  product_profile?: any;
+  guide_data?: any;
+}): Promise<{ success: boolean; id?: string; message?: string }> {
+  const res = await fetch(`${getApiBaseUrl()}/api/user/saved-guides`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to save guide' }));
+    throw new Error(err.detail || 'Failed to save product guide');
+  }
+  return res.json();
+}
+
+export async function getUserSavedGuides(): Promise<SavedProductGuideItem[]> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/user/saved-guides`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.saved_guides || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteUserSavedGuide(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/user/saved-guides/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Nearest Laboratories Recommendation API (Issue 6 & 7)
+ */
+export interface RecommendedLab {
+  id: number;
+  lab_name: string;
+  osl_code?: string;
+  address: string;
+  city: string;
+  state: string;
+  status: string;
+  source_url?: string;
+  testing_charge?: number;
+  currency: string;
+  remarks?: string;
+  proximity_tier: string;
+  tier_score: number;
+}
+
+export async function getRecommendedLaboratories(params: {
+  location?: string;
+  standard_id?: string;
+  lat?: number;
+  lng?: number;
+  signal?: AbortSignal;
+}): Promise<{
+  query_location: string;
+  detected_city?: string;
+  detected_state?: string;
+  total_laboratories: number;
+  laboratories: RecommendedLab[];
+}> {
+  const queryParams = new URLSearchParams();
+  if (params.location) queryParams.append('location', params.location);
+  if (params.standard_id) queryParams.append('standard_id', params.standard_id);
+  if (params.lat !== undefined) queryParams.append('lat', params.lat.toString());
+  if (params.lng !== undefined) queryParams.append('lng', params.lng.toString());
+
+  const url = `${getApiBaseUrl()}/api/labs/recommend?${queryParams.toString()}`;
+  const res = await fetchWithTimeout(url, { signal: params.signal }, 6000);
+  if (!res.ok) {
+    throw new Error('Failed to retrieve laboratory recommendations');
+  }
+  return res.json();
+}
+

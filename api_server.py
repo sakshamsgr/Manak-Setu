@@ -1040,7 +1040,7 @@ async def get_testing_and_labs(standard_id: str):
 
     # Fetch laboratories and charges
     cur.execute("""
-        SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, c.testing_charge, c.currency, c.remarks
+        SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, c.testing_charge, c.currency, c.remarks, l.status
         FROM lab_test_charges c
         JOIN laboratories l ON c.laboratory_id = l.id
         WHERE c.standard_id = %s OR c.standard_id ILIKE '%%368%%';
@@ -1058,7 +1058,8 @@ async def get_testing_and_labs(standard_id: str):
             "source_url": lr[6],
             "testing_charge": float(lr[7]) if lr[7] else None,
             "currency": lr[8] or "INR",
-            "remarks": lr[9] if lr[9] != "None" else None
+            "remarks": lr[9] if lr[9] != "None" else None,
+            "status": lr[10] or "Operational"
         })
 
     # Fetch grouping rules
@@ -1511,6 +1512,264 @@ async def verify_consumer_mark(
             "qco": qco_info,
             "official_url": "https://www.services.bis.gov.in"
         }
+
+# --- 1.8 User Saved Product Guides & Lab Recommendations ---
+
+def get_current_user_from_request(request: Request) -> Optional[dict]:
+    token = request.cookies.get("bis_session")
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        return {"email": payload.get("sub"), "name": payload.get("name")}
+    except Exception:
+        return None
+
+class SaveGuideRequest(BaseModel):
+    product_name: str
+    standard_code: Optional[str] = None
+    active_step: Optional[int] = 1
+    query: Optional[str] = ""
+    product_profile: Optional[dict] = None
+    guide_data: Optional[dict] = None
+
+@app.post("/api/user/saved-guides")
+async def save_user_product_guide(req: SaveGuideRequest, request: Request):
+    user = get_current_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="User must be logged in to save guide progress to account.")
+
+    user_id = user["email"]
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id FROM saved_product_guides
+            WHERE user_id = %s AND LOWER(product_name) = LOWER(%s)
+            LIMIT 1;
+        """, (user_id, req.product_name.strip()))
+        existing = cur.fetchone()
+
+        if existing:
+            guide_id = existing[0]
+            cur.execute("""
+                UPDATE saved_product_guides
+                SET standard_code = %s,
+                    active_step = %s,
+                    query = %s,
+                    product_profile = %s::jsonb,
+                    guide_data = %s::jsonb,
+                    updated_at = NOW()
+                WHERE id = %s;
+            """, (
+                req.standard_code or "",
+                req.active_step or 1,
+                req.query or "",
+                json.dumps(req.product_profile or {}),
+                json.dumps(req.guide_data or {}),
+                guide_id
+            ))
+        else:
+            cur.execute("""
+                INSERT INTO saved_product_guides (
+                    user_id, product_name, standard_code, active_step, query, product_profile, guide_data, created_at, updated_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, NOW(), NOW())
+                RETURNING id;
+            """, (
+                user_id,
+                req.product_name.strip(),
+                req.standard_code or "",
+                req.active_step or 1,
+                req.query or "",
+                json.dumps(req.product_profile or {}),
+                json.dumps(req.guide_data or {})
+            ))
+            guide_id = cur.fetchone()[0]
+
+        conn.commit()
+        return {"success": True, "id": str(guide_id), "message": "Product guide progress saved successfully"}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=f"Failed to save guide: {str(e)}")
+    finally:
+        cur.close()
+        conn.close()
+
+@app.get("/api/user/saved-guides")
+async def get_user_saved_guides(request: Request):
+    user = get_current_user_from_request(request)
+    if not user:
+        return {"saved_guides": []}
+
+    user_id = user["email"]
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT id, product_name, standard_code, active_step, query, product_profile, guide_data, updated_at
+            FROM saved_product_guides
+            WHERE user_id = %s
+            ORDER BY updated_at DESC;
+        """, (user_id,))
+        rows = cur.fetchall()
+        guides = []
+        for r in rows:
+            guides.append({
+                "id": str(r[0]),
+                "product_name": r[1],
+                "standard_code": r[2],
+                "active_step": r[3],
+                "query": r[4],
+                "product_profile": r[5] if isinstance(r[5], dict) else json.loads(r[5] or "{}"),
+                "guide_data": r[6] if isinstance(r[6], dict) else json.loads(r[6] or "{}"),
+                "updated_at": r[7].isoformat() if hasattr(r[7], 'isoformat') else str(r[7])
+            })
+        return {"saved_guides": guides}
+    finally:
+        cur.close()
+        conn.close()
+
+@app.delete("/api/user/saved-guides/{guide_id}")
+async def delete_user_saved_guide(guide_id: str, request: Request):
+    user = get_current_user_from_request(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    user_id = user["email"]
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            DELETE FROM saved_product_guides
+            WHERE id = %s AND user_id = %s;
+        """, (guide_id, user_id))
+        conn.commit()
+        return {"success": True, "message": "Saved guide deleted"}
+    finally:
+        cur.close()
+        conn.close()
+
+@app.get("/api/labs/recommend")
+async def recommend_laboratories(
+    location: Optional[str] = Query(None),
+    standard_id: Optional[str] = Query(None),
+    lat: Optional[float] = Query(None),
+    lng: Optional[float] = Query(None)
+):
+    target_city = ""
+    target_state = ""
+    raw_location = (location or "").strip()
+
+    if (lat is not None and lng is not None) and not raw_location:
+        try:
+            import urllib.request
+            geo_url = f"https://nominatim.openstreetmap.org/reverse?lat={lat}&lon={lng}&format=json"
+            geo_req = urllib.request.Request(geo_url, headers={'User-Agent': 'ManakSetu-BIS-Compliance-App'})
+            with urllib.request.urlopen(geo_req, timeout=3) as resp:
+                geo_data = json.loads(resp.read().decode('utf-8'))
+                addr_info = geo_data.get('address', {})
+                target_city = addr_info.get('city') or addr_info.get('town') or addr_info.get('state_district') or addr_info.get('county') or ''
+                target_state = addr_info.get('state') or ''
+                raw_location = target_city or target_state or geo_data.get('display_name', '')
+        except Exception as ge:
+            print(f"Geolocation reverse error: {ge}")
+
+    if raw_location:
+        loc_parts = [p.strip() for p in raw_location.replace(",", " ").split() if p.strip()]
+    else:
+        loc_parts = []
+
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        text_id = (standard_id or "368").strip()
+        cur.execute("""
+            SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
+                   c.testing_charge, c.currency, c.remarks
+            FROM laboratories l
+            LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s OR c.standard_id ILIKE '%%368%%')
+            ORDER BY l.id;
+        """, (text_id,))
+        rows = cur.fetchall()
+
+        matched_labs = []
+        for r in rows:
+            lab_id = r[0]
+            name = r[1] or ""
+            osl = r[2]
+            address = r[3] or ""
+            city = r[4] or ""
+            state = r[5] or ""
+            source_url = r[6]
+            status = r[7] or "Operational"
+            charge = float(r[8]) if r[8] else None
+            currency = r[9] or "INR"
+            remarks = r[10] if r[10] != "None" else None
+
+            tier_score = 3
+            proximity_label = "National BIS Network"
+
+            combined_location_text = f"{city} {state} {address} {name}".lower()
+
+            if loc_parts:
+                city_match = False
+                state_match = False
+                for part in loc_parts:
+                    p = part.lower()
+                    if len(p) >= 3:
+                        if city and p in city.lower():
+                            city_match = True
+                        elif state and p in state.lower():
+                            state_match = True
+                        elif p in combined_location_text:
+                            state_match = True
+
+                ncr_keywords = ["delhi", "noida", "ghaziabad", "gurugram", "gurgaon", "faridabad", "bahadurgarh", "ncr"]
+                is_user_ncr = any(k in raw_location.lower() for k in ncr_keywords)
+                is_lab_ncr = any(k in combined_location_text for k in ncr_keywords)
+
+                if city_match:
+                    tier_score = 1
+                    proximity_label = f"Nearby (Same City: {city})"
+                elif is_user_ncr and is_lab_ncr:
+                    tier_score = 2
+                    proximity_label = f"Nearby (Delhi NCR: {city})"
+                elif state_match:
+                    tier_score = 3
+                    proximity_label = f"Regional (Same State: {state})"
+                else:
+                    tier_score = 4
+                    proximity_label = "National Network (BIS Central/OSL)"
+
+            matched_labs.append({
+                "id": lab_id,
+                "lab_name": name,
+                "osl_code": osl,
+                "address": address or "Authoritative BIS Recognised Laboratory",
+                "city": city or "National Network",
+                "state": state or "India",
+                "status": status,
+                "source_url": source_url or "https://lims.bis.gov.in/home/search_is_number/",
+                "testing_charge": charge,
+                "currency": currency,
+                "remarks": remarks,
+                "proximity_tier": proximity_label,
+                "tier_score": tier_score
+            })
+
+        matched_labs.sort(key=lambda x: (x["tier_score"], x["testing_charge"] or 999999))
+
+        return {
+            "query_location": raw_location,
+            "detected_city": target_city,
+            "detected_state": target_state,
+            "total_laboratories": len(matched_labs),
+            "laboratories": matched_labs
+        }
+    finally:
+        cur.close()
+        conn.close()
 
 if __name__ == "__main__":
     import uvicorn

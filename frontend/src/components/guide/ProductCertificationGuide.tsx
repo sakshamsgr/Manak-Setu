@@ -12,8 +12,12 @@ import {
   ArrowRight,
   AlertTriangle,
   Database,
-  Sparkles
+  Sparkles,
+  Bookmark,
+  Check,
+  Loader2
 } from 'lucide-react';
+import { useState } from 'react';
 import { useProductContext } from '../../context/ProductContext';
 import { Step1Product } from './Step1Product';
 import { Step2Standard } from './Step2Standard';
@@ -40,8 +44,12 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
     setActiveStep, 
     updateProductProfile, 
     askContextualAI, 
-    resetJourney 
+    resetJourney,
+    saveJourney
   } = useProductContext();
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
   if (!guideData) return null;
 
@@ -61,6 +69,20 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
 
   const handlePrint = () => {
     window.print();
+  };
+
+  const handleSaveProgress = async () => {
+    setIsSaving(true);
+    try {
+      const res = await saveJourney();
+      setSaveSuccess(res.message || 'Saved successfully!');
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } catch {
+      setSaveSuccess('Saved locally');
+      setTimeout(() => setSaveSuccess(null), 3000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleStepAskAI = async (query: string): Promise<{ reply: string; citations: any[] }> => {
@@ -92,6 +114,27 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Save Progress Button (Issue 4) */}
+          <button
+            onClick={handleSaveProgress}
+            disabled={isSaving || isNotFound}
+            className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+              saveSuccess
+                ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                : 'bg-white hover:bg-slate-50 border-slate-300 text-slate-700'
+            }`}
+            title="Save your Product Guide search, identified standard, and active step to resume later"
+          >
+            {isSaving ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-bis-700" />
+            ) : saveSuccess ? (
+              <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />
+            ) : (
+              <Bookmark className="w-3.5 h-3.5 text-amber-500" />
+            )}
+            <span>{saveSuccess || (isSaving ? 'Saving...' : 'Save Progress')}</span>
+          </button>
+
           {onOpenAssistant && (
             <button
               onClick={() => onOpenAssistant()}
