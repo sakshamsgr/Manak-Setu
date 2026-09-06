@@ -1686,14 +1686,14 @@ async def recommend_laboratories(
         text_id = (standard_id or "368").strip()
         cur.execute("""
             SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
-                   c.testing_charge, c.currency, c.remarks
+       c.testing_charge, c.currency, c.remarks, c.grade_type_size
             FROM laboratories l
             LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s OR c.standard_id ILIKE '%%368%%')
             ORDER BY l.id;
         """, (text_id,))
         rows = cur.fetchall()
 
-        matched_labs = []
+        matched_labs = {}
         for r in rows:
             lab_id = r[0]
             name = r[1] or ""
@@ -1706,6 +1706,7 @@ async def recommend_laboratories(
             charge = float(r[8]) if r[8] else None
             currency = r[9] or "INR"
             remarks = r[10] if r[10] != "None" else None
+            grade_type_size = r[11] or ""
 
             tier_score = 3
             proximity_label = "National BIS Network"
@@ -1741,23 +1742,36 @@ async def recommend_laboratories(
                 else:
                     tier_score = 4
                     proximity_label = "National Network (BIS Central/OSL)"
+            if lab_id not in matched_labs:
+                matched_labs[lab_id] = {
+                    "id": lab_id,
+                    "lab_name": name,
+                    "osl_code": osl,
+                    "address": address or "Authoritative BIS Recognised Laboratory",
+                    "city": city or "National Network",
+                    "state": state or "India",
+                    "status": status,
+                    "source_url": source_url or "https://lims.bis.gov.in/home/search_is_number/",
+                    "testing_charge": charge,
+                    "currency": currency,
+                    "remarks": remarks,
+                    "proximity_tier": proximity_label,
+                    "tier_score": tier_score,
+                    "testing_scopes": []
+                }
 
-            matched_labs.append({
-                "id": lab_id,
-                "lab_name": name,
-                "osl_code": osl,
-                "address": address or "Authoritative BIS Recognised Laboratory",
-                "city": city or "National Network",
-                "state": state or "India",
-                "status": status,
-                "source_url": source_url or "https://lims.bis.gov.in/home/search_is_number/",
+            scope = {
                 "testing_charge": charge,
                 "currency": currency,
-                "remarks": remarks,
-                "proximity_tier": proximity_label,
-                "tier_score": tier_score
-            })
+                "grade_type_size": grade_type_size,
+                "remarks": remarks
+            }
 
+            if scope not in matched_labs[lab_id]["testing_scopes"]:
+                matched_labs[lab_id]["testing_scopes"].append(scope)
+  
+
+        matched_labs = list(matched_labs.values())
         matched_labs.sort(key=lambda x: (x["tier_score"], x["testing_charge"] or 999999))
 
         return {
