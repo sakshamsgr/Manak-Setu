@@ -1,36 +1,22 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React from 'react';
 import { 
-  Search, 
-  Paperclip, 
-  Mic, 
-  MicOff, 
   Sparkles, 
   ArrowRight, 
-  X, 
-  FileText, 
-  Image as ImageIcon, 
   ShieldCheck, 
-  BookOpen, 
-  FlaskConical, 
-  Calculator,
-  Award,
   Zap,
   Droplets,
   Radio,
   Loader2,
   Gem,
-  UserCheck,
-  Building2,
-  MapPin,
+  Award,
   Package,
-  SlidersHorizontal,
+  Building2,
   Bookmark,
   Trash2
 } from 'lucide-react';
 import { MainNavTab } from '../layout/Header';
 import { useLanguage } from '../../context/LanguageContext';
 import { useProductContext } from '../../context/ProductContext';
-import { ProductProfile } from '../../types/compliance';
 
 interface HomeHeroProps {
   onSubmitQuery: (query: string, file?: File) => void;
@@ -51,19 +37,6 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
     loadSavedGuide,
     deleteSavedGuide
   } = useProductContext();
-
-  const [query, setQuery] = useState('');
-  const [productName, setProductName] = useState(productProfile.name || '');
-  const [category, setCategory] = useState(productProfile.category || 'Electrical & Electronics');
-  const [industryScale, setIndustryScale] = useState(productProfile.industryScale || 'micro');
-  const [location, setLocation] = useState(productProfile.manufacturingLocation || 'Domestic Facility (India)');
-  const [isForeign, setIsForeign] = useState(productProfile.isForeign || false);
-  const [showAdvanced, setShowAdvanced] = useState(false);
-
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isRecording, setIsRecording] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
 
   const sampleProductPrompts = [
     {
@@ -110,76 +83,22 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
     },
   ];
 
-  // Speech-to-text setup
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = 'en-IN';
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setQuery((prev) => (prev ? `${prev} ${transcript}` : transcript));
-        setIsRecording(false);
-      };
-
-      recognition.onerror = () => setIsRecording(false);
-      recognition.onend = () => setIsRecording(false);
-
-      recognitionRef.current = recognition;
-    }
-  }, []);
-
-  const handleToggleVoice = () => {
-    if (!recognitionRef.current) {
-      alert('Speech recognition is not supported in this browser.');
-      return;
-    }
-
-    if (isRecording) {
-      recognitionRef.current.stop();
-      setIsRecording(false);
-    } else {
-      recognitionRef.current.start();
-      setIsRecording(true);
-    }
-  };
-
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      setSelectedFile(e.target.files[0]);
-    }
-  };
-
   const handleSubmit = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (isLoading) return;
-    const effectiveQuery = query.trim() || (productName.trim() ? `Compliance requirements for ${productName.trim()}` : 'Compliance requirements for electrical appliances');
+    
+    // Generate a contextual query for the AI based on the product name since the chatbox is removed
+    const effectiveQuery = productProfile.name?.trim() 
+      ? `Compliance requirements for ${productProfile.name.trim()}` 
+      : 'Compliance requirements for electrical appliances';
 
-    // Persist all captured profile info to ProductContext so Step 1 has it pre-filled
-    updateProductProfile({
-      name: productName.trim() || query.trim().slice(0, 50) || 'Electrical Appliance',
-      category,
-      industryScale: industryScale as any,
-      manufacturingLocation: location,
-      isForeign,
-    });
-
-    onSubmitQuery(effectiveQuery, selectedFile || undefined);
+    onSubmitQuery(effectiveQuery);
   };
 
   const handleQuickPromptClick = (item: typeof sampleProductPrompts[0]) => {
-    setQuery(item.prompt);
-    setProductName(item.product);
-    setCategory(item.cat);
     updateProductProfile({
       name: item.product,
-      category: item.cat,
-      industryScale: industryScale as any,
-      manufacturingLocation: location,
-      isForeign,
+      category: item.cat as any,
     });
     onSubmitQuery(item.prompt);
   };
@@ -207,216 +126,157 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
           </p>
         </div>
 
-        {/* Primary Interactive Product Profile & Consultation Card */}
-        <div className="bg-white rounded-3xl shadow-card border-2 border-slate-200/90 p-4 sm:p-6 transition-all hover:border-bis-300">
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="flex items-center justify-between">
+        {/* Primary Interactive Product Profile & Consultation Card (Transplanted Step 1) */}
+        <div className="bg-white rounded-3xl shadow-card border-2 border-slate-200/90 p-5 sm:p-7 transition-all hover:border-bis-300">
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
               <label className="block text-xs sm:text-sm font-extrabold text-slate-800 uppercase tracking-wider flex items-center gap-2">
                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
-                <span>{t('hero.inputLabel')}</span>
+                <span>{t('hero.inputLabel') || 'TELL US ABOUT YOUR PRODUCT OR COMPLIANCE REQUIREMENT'}</span>
               </label>
+            </div>
 
+            {/* Transplanted Step 1 Form Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Product Name */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-bis-700" />
+                  <span>{t('s1ProductName') || 'Product Name / Item'}</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={productProfile.name}
+                  onChange={(e) => updateProductProfile({ name: e.target.value })}
+                  placeholder="e.g. Electric Iron, Smartwatch, Cement"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                />
+              </div>
+
+              {/* Product Industry Category */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
+                  {t('s1Category') || 'Product Industry Category'}
+                </label>
+                <select
+                  value={productProfile.category}
+                  onChange={(e) => updateProductProfile({ category: e.target.value as any })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                >
+                  <option value="Electrical & Electronics">Electrical & Electronics</option>
+                  <option value="Food & Agriculture">Food & Agriculture</option>
+                  <option value="Civil Engineering">Civil Engineering & Construction</option>
+                  <option value="Mechanical">Mechanical Engineering</option>
+                  <option value="Chemical">Chemicals & Polymers</option>
+                  <option value="Medical Equipment">Medical & Safety Equipment</option>
+                </select>
+              </div>
+
+              {/* Scale of Industry / Concession */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                    <span>{t('s1Scale') || 'Scale of Industry'}</span>
+                  </span>
+                  <span className="text-amber-700 font-bold text-[11px]">50% Udyam Subsidy</span>
+                </label>
+                <select
+                  value={productProfile.industryScale}
+                  onChange={(e) => updateProductProfile({ industryScale: e.target.value as any })}
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                >
+                  <option value="micro">{t('s1MicroScale') || 'Micro Enterprise (Investment < 1 Cr)'}</option>
+                  <option value="startup">{t('s1StartupScale') || 'Recognized Startup (DPIIT)'}</option>
+                  <option value="small">{t('s1SmallScale') || 'Small Enterprise (Investment < 10 Cr)'}</option>
+                  <option value="medium">{t('s1MediumScale') || 'Medium Enterprise (Investment < 50 Cr)'}</option>
+                  <option value="large">{t('s1LargeScale') || 'Large Scale Industry'}</option>
+                </select>
+              </div>
+
+              {/* Product Sub-type / Intended Use */}
+              <div className="space-y-1.5">
+                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <Package className="w-3.5 h-3.5 text-bis-700" />
+                  <span>{t('s1SubType') || 'Product Sub-type / Intended Use'}</span>
+                </label>
+                <input
+                  type="text"
+                  value={productProfile.subType || ''}
+                  onChange={(e) => updateProductProfile({ subType: e.target.value, intendedUse: e.target.value })}
+                  placeholder="e.g. Immersion Water Heater, Portable, Class I"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                />
+              </div>
+
+              {/* Key Material / Technical Specifications */}
+              <div className="space-y-1.5 md:col-span-2">
+                <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>{t('s1TechnicalSpecs') || 'Key Material / Technical Specifications (optional)'}</span>
+                </label>
+                <input
+                  type="text"
+                  value={productProfile.technicalSpecs || ''}
+                  onChange={(e) => updateProductProfile({ technicalSpecs: e.target.value })}
+                  placeholder="e.g. 230V AC, 1500W, Copper Sheathed Tubular Heating Element"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                />
+              </div>
+            </div>
+
+            {/* Domestic vs Foreign Toggle + Submit Action */}
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-6">
+              
+              {/* Domestic vs Foreign Toggle */}
+              <div className="flex items-center gap-6 shrink-0">
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                  <input
+                    type="radio"
+                    name="origin"
+                    checked={!productProfile.isForeign}
+                    onChange={() => updateProductProfile({ isForeign: false })}
+                    className="text-bis-800 focus:ring-bis-500"
+                  />
+                  <span>{t('s1Domestic') || 'Domestic Indian Manufacturer'}</span>
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+                  <input
+                    type="radio"
+                    name="origin"
+                    checked={productProfile.isForeign}
+                    onChange={() => updateProductProfile({ isForeign: true })}
+                    className="text-bis-800 focus:ring-bis-500"
+                  />
+                  <span>{t('s1Foreign') || 'Foreign Manufacturer (FMCS)'}</span>
+                </label>
+              </div>
+
+              {/* Submit Action */}
               <button
-                type="button"
-                onClick={() => setShowAdvanced(!showAdvanced)}
-                className="text-xs font-bold text-bis-700 hover:text-bis-900 flex items-center gap-1"
+                type="submit"
+                disabled={isLoading}
+                className={`shrink-0 px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md active:scale-95 ${
+                  isLoading
+                    ? 'bg-blue-800 text-white cursor-wait opacity-90'
+                    : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-blue-900/20 hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500'
+                }`}
               >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>{showAdvanced ? 'Hide Product Details' : 'Specify Product Parameters'}</span>
+                {isLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
+                    <span>{t('hero.analyzing') || 'Building Guide...'}</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-amber-300" />
+                    <span>{t('hero.startGuide') || 'Start Product Certification Guide'}</span>
+                    <ArrowRight className="w-4 h-4" />
+                  </>
+                )}
               </button>
             </div>
-
-            {/* Main Text Input Area */}
-            <div className="relative rounded-2xl bg-slate-50 border border-slate-300 focus-within:border-bis-700 focus-within:ring-2 focus-within:ring-bis-100 p-3 transition-all">
-              <textarea
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSubmit();
-                  }
-                }}
-                placeholder={isRecording ? t('hero.listening') : t('hero.inputPlaceholder')}
-                rows={2}
-                disabled={isLoading}
-                className="w-full bg-transparent border-0 focus:ring-0 focus:outline-none text-xs sm:text-sm md:text-base text-slate-900 placeholder:text-slate-400 resize-none font-medium custom-scrollbar"
-              />
-
-              {/* Selected Attachment Pill */}
-              {selectedFile && (
-                <div className="flex items-center gap-2 p-1.5 rounded-xl bg-bis-50 border border-bis-200 text-xs text-bis-900 mb-2 w-fit">
-                  {selectedFile.type.startsWith('image/') ? (
-                    <ImageIcon className="w-3.5 h-3.5 text-bis-600" />
-                  ) : (
-                    <FileText className="w-3.5 h-3.5 text-bis-600" />
-                  )}
-                  <span className="font-semibold max-w-[180px] truncate">{selectedFile.name}</span>
-                  <span className="text-[10px] text-slate-500">({(selectedFile.size / 1024).toFixed(0)} KB)</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedFile(null);
-                      if (fileInputRef.current) fileInputRef.current.value = '';
-                    }}
-                    className="p-0.5 hover:bg-bis-200 rounded text-bis-700"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
-
-              {/* Action Toolbar Inside Box */}
-              <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 mt-1">
-                <div className="flex items-center gap-1.5">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,image/*,.doc,.docx"
-                    onChange={handleFileChange}
-                    className="hidden"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-slate-600 hover:text-bis-900 hover:bg-slate-200/70 transition-colors"
-                    title={t('hero.attachPhoto')}
-                  >
-                    <Paperclip className="w-4 h-4 text-bis-700" />
-                    <span className="hidden sm:inline">{t('hero.attachPhoto')}</span>
-                    <span className="sm:hidden">{t('hero.attachShort')}</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleToggleVoice}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                      isRecording
-                        ? 'bg-rose-500 text-white animate-pulse'
-                        : 'text-slate-600 hover:text-bis-900 hover:bg-slate-200/70'
-                    }`}
-                    title={isRecording ? 'Listening... click to stop' : 'Speak your query'}
-                  >
-                    {isRecording ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4 text-bis-700" />}
-                    <span className="hidden sm:inline">{isRecording ? t('hero.listening') : t('hero.voiceQuery')}</span>
-                  </button>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className={`px-6 py-2.5 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md active:scale-95 ${
-                    isLoading
-                      ? 'bg-blue-800 text-white cursor-wait opacity-90'
-                      : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-blue-900/20 hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2'
-                  }`}
-                >
-                  {isLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
-                      <span>{t('hero.analyzing') || 'Analyzing'}</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4 text-amber-300" />
-                      <span>{t('hero.startGuide')}</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </div>
-            </div>
-
-            {/* Optional / Expanded Product Parameter Fields */}
-            {showAdvanced && (
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-3 animate-fade-in text-xs">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 flex items-center gap-1">
-                    <Package className="w-3.5 h-3.5 text-bis-700" />
-                    <span>{t('hero.productNameLabel')}</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={productName}
-                    onChange={(e) => setProductName(e.target.value)}
-                    placeholder={t('hero.productNamePlaceholder')}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-medium"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">{t('hero.categoryLabel')}</label>
-                  <select
-                    value={category}
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-medium"
-                  >
-                    <option value="Electrical & Electronics">Electrical & Electronics</option>
-                    <option value="Food & Agriculture">Food & Agriculture</option>
-                    <option value="Civil Engineering">Civil Engineering & Construction</option>
-                    <option value="Mechanical">Mechanical Engineering</option>
-                    <option value="Chemical">Chemicals & Polymers</option>
-                    <option value="Medical Equipment">Medical & Safety Equipment</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 flex items-center justify-between">
-                    <span>{t('hero.scaleLabel')}</span>
-                    <span className="text-amber-700 font-bold">50% MSME</span>
-                  </label>
-                  <select
-                    value={industryScale}
-                    onChange={(e) => setIndustryScale(e.target.value as any)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-medium"
-                  >
-                    <option value="micro">{t('step1.microScale')}</option>
-                    <option value="startup">{t('step1.startupScale')}</option>
-                    <option value="small">{t('step1.smallScale')}</option>
-                    <option value="medium">{t('step1.mediumScale')}</option>
-                    <option value="large">{t('step1.largeScale')}</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-bis-700" />
-                    <span>{t('hero.locationLabel')}</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder={t('hero.locationPlaceholder')}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-medium"
-                  />
-                </div>
-
-                <div className="sm:col-span-2 pt-2 border-t border-slate-200 flex items-center gap-6">
-                  <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
-                    <input
-                      type="radio"
-                      name="heroOrigin"
-                      checked={!isForeign}
-                      onChange={() => setIsForeign(false)}
-                      className="text-bis-800"
-                    />
-                    <span>{t('hero.domesticLabel')}</span>
-                  </label>
-
-                  <label className="flex items-center gap-2 cursor-pointer font-semibold text-slate-700">
-                    <input
-                      type="radio"
-                      name="heroOrigin"
-                      checked={isForeign}
-                      onChange={() => setIsForeign(true)}
-                      className="text-bis-800"
-                    />
-                    <span>{t('hero.foreignLabel')}</span>
-                  </label>
-                </div>
-              </div>
-            )}
           </form>
 
           {/* 2-Column Balanced Section: Explore Common Queries (LEFT) & Saved Product Details/Steps (RIGHT) */}

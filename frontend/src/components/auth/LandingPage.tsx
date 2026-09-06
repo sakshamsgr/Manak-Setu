@@ -26,7 +26,6 @@ export const LandingPage: React.FC = () => {
     setSuccessMsg(null);
   };
 
-  // FIX: Completely clear the state when navigating between views
   const clearFormState = () => {
     setEmail('');
     setPassword('');
@@ -52,7 +51,6 @@ export const LandingPage: React.FC = () => {
       await checkSession(); 
     } catch (err: any) {
       const errorMsg = err.message?.toLowerCase() || '';
-      // FIX: Trap unverified users who try to login and send them to OTP
       if (errorMsg.includes('unverified') || errorMsg.includes('email not confirmed')) {
         setStep('verify-signup');
         setError('Your account is unverified. Please check your email for the OTP to continue.');
@@ -82,7 +80,6 @@ export const LandingPage: React.FC = () => {
       setSuccessMsg(`OTP sent to ${email}`);
     } catch (err: any) {
       const errorMsg = err.message?.toLowerCase() || '';
-      // FIX: Seamlessly handle users who already signed up but didn't verify
       if (errorMsg.includes('already exists') || errorMsg.includes('already registered')) {
         setStep('verify-signup');
         setError('An account with this email already exists but is unverified. Please enter your OTP.');
@@ -108,12 +105,10 @@ export const LandingPage: React.FC = () => {
     }
   };
 
-  // FIX: Added dedicated Resend OTP function
   const handleResendOTP = async () => {
     clearMessages();
     setIsLoading(true);
     try {
-      // Note: Ensure `resendOtp` is implemented in your authApi.ts!
       await authApi.resendOtp({ email });
       setSuccessMsg('A new OTP has been sent to your email.');
     } catch (err: any) {
@@ -138,13 +133,35 @@ export const LandingPage: React.FC = () => {
     }
   };
 
-  const handleVerifyForgot = (e: React.FormEvent) => {
+  const handleResendForgotOTP = async () => {
+    clearMessages();
+    setIsLoading(true);
+    try {
+      await authApi.forgotPassword({ email });
+      setSuccessMsg('A new reset code has been sent to your email.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend reset code.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleVerifyForgot = async (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
-    if (otp.length >= 5) {
+    
+    if (otp.length < 5) {
+      return setError('Please enter a valid OTP.');
+    }
+
+    setIsLoading(true);
+    try {
+      await authApi.verifyResetOtp({ email, otp });
       setStep('reset-password');
-    } else {
-      setError('Please enter a valid OTP.');
+    } catch (err: any) {
+      setError(err.message || 'Invalid or expired OTP.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -181,11 +198,12 @@ export const LandingPage: React.FC = () => {
         <div className="bg-gradient-to-br from-bis-950 via-bis-900 to-bis-800 p-10 text-white flex flex-col justify-center space-y-6">
           <div className="flex items-center gap-3">
             <ShieldCheck className="w-10 h-10 text-amber-500" />
-            <span className="text-2xl font-black tracking-tight">BIS AI Assistant</span>
+            <span className="text-2xl font-black tracking-tight">MANAK SETU</span>
           </div>
           <h1 className="text-3xl font-extrabold leading-tight">Intelligent Compliance Navigator</h1>
           <p className="text-slate-300 text-sm leading-relaxed">
-            Instantly search the vector database, verify Quality Control Orders (QCOs), and generate step-by-step product certification roadmaps.
+             Find standards. Verify requirements. Navigate certification.<br></br>
+            Search relevant standards, understand compliance requirements, and get step-by-step guidance for product certification.
           </p>
         </div>
 
@@ -218,7 +236,6 @@ export const LandingPage: React.FC = () => {
                 <label className="text-xs font-bold text-slate-700 ml-1">Email Address</label>
                 <div className="relative">
                   <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
-                  {/* FIX: Added autoComplete="username" */}
                   <input type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all" />
                 </div>
               </div>
@@ -227,7 +244,6 @@ export const LandingPage: React.FC = () => {
                 <label className="text-xs font-bold text-slate-700 ml-1">Password</label>
                 <div className="relative">
                   <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
-                  {/* FIX: Added autoComplete="current-password" */}
                   <input type={showPassword ? "text" : "password"} required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-12 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all" />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
@@ -272,7 +288,6 @@ export const LandingPage: React.FC = () => {
               
               <div className="relative">
                 <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
-                {/* FIX: Added autoComplete="new-password" */}
                 <input type={showPassword ? "text" : "password"} required autoComplete="new-password" minLength={8} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-12 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3 text-slate-400 hover:text-slate-600">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -281,7 +296,6 @@ export const LandingPage: React.FC = () => {
               
               <div className="relative">
                 <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
-                {/* FIX: Added autoComplete="new-password" */}
                 <input type={showPassword ? "text" : "password"} required autoComplete="new-password" minLength={8} placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" />
               </div>
               
@@ -315,7 +329,6 @@ export const LandingPage: React.FC = () => {
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify Registration'}
               </button>
 
-              {/* FIX: Added Resend OTP Button */}
               <div className="flex justify-center pt-2">
                 <button type="button" onClick={handleResendOTP} disabled={isLoading} className="flex items-center gap-2 text-sm font-semibold text-bis-700 hover:text-bis-900 disabled:opacity-50">
                   <RotateCcw className="w-4 h-4" /> Resend OTP
@@ -336,6 +349,7 @@ export const LandingPage: React.FC = () => {
                 <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all" />
               </div>
               {error && <p className="text-xs text-rose-500 font-bold">{error}</p>}
+              {successMsg && <p className="text-xs text-emerald-600 font-bold bg-emerald-50 p-2 rounded">{successMsg}</p>}
               <button type="submit" disabled={isLoading} className="w-full py-3.5 bg-bis-900 hover:bg-bis-800 text-white font-bold rounded-xl shadow transition flex justify-center">
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Send Reset Code'}
               </button>
@@ -353,10 +367,19 @@ export const LandingPage: React.FC = () => {
                 <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
                 <input type="text" required maxLength={6} placeholder="_ _ _ _ _ _" value={otp} onChange={(e) => setOtp(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all font-mono tracking-widest text-lg text-center" />
               </div>
-              {error && <p className="text-xs text-rose-500 font-bold">{error}</p>}
+              
+              {error && <p className="text-xs text-rose-500 font-bold bg-rose-50 p-2 rounded">{error}</p>}
+              {successMsg && <p className="text-xs text-emerald-600 font-bold bg-emerald-50 p-2 rounded">{successMsg}</p>}
+              
               <button type="submit" disabled={isLoading || otp.length < 5} className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition flex justify-center">
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Continue'}
               </button>
+
+              <div className="flex justify-center pt-2">
+                <button type="button" onClick={handleResendForgotOTP} disabled={isLoading} className="flex items-center gap-2 text-sm font-semibold text-bis-700 hover:text-bis-900 disabled:opacity-50">
+                  <RotateCcw className="w-4 h-4" /> Resend OTP
+                </button>
+              </div>
             </form>
           )}
 
@@ -378,6 +401,7 @@ export const LandingPage: React.FC = () => {
                 <input type={showPassword ? "text" : "password"} required minLength={8} autoComplete="new-password" placeholder="Confirm New Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 text-sm" />
               </div>
               {error && <p className="text-xs text-rose-500 font-bold">{error}</p>}
+              {successMsg && <p className="text-xs text-emerald-600 font-bold bg-emerald-50 p-2 rounded">{successMsg}</p>}
               <button type="submit" disabled={isLoading} className="w-full py-3.5 bg-bis-900 hover:bg-bis-800 text-white font-bold rounded-xl shadow transition flex justify-center">
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Update Password'}
               </button>

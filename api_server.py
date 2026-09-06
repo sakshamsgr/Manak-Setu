@@ -142,18 +142,20 @@ def send_secure_otp(email: str, purpose: str):
     clean_email = email.lower().strip()
     otp_code = str(random.randint(100000, 999999))
     hashed = hash_otp(otp_code)
-    expires = datetime.now(timezone.utc) + timedelta(minutes=5)
 
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM auth_otps WHERE email = %s AND purpose = %s", (clean_email, purpose))
-    cursor.execute(
-        "INSERT INTO auth_otps (email, otp_hash, purpose, expires_at, attempts) VALUES (%s, %s, %s, %s, 0)",
-        (clean_email, hashed, purpose, expires)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+    try:
+        cursor.execute("DELETE FROM auth_otps WHERE email = %s AND purpose = %s", (clean_email, purpose))
+        # DB timezone fix applied here
+        cursor.execute(
+            "INSERT INTO auth_otps (email, otp_hash, purpose, expires_at, attempts) VALUES (%s, %s, %s, (CURRENT_TIMESTAMP AT TIME ZONE 'UTC') + INTERVAL '5 minutes', 0)",
+            (clean_email, hashed, purpose)
+        )
+        conn.commit()
+    finally:
+        cursor.close()
+        conn.close()
 
     sender_email = os.getenv("SMTP_USERNAME")
     sender_password = os.getenv("SMTP_PASSWORD")
@@ -177,28 +179,31 @@ def send_secure_otp(email: str, purpose: str):
 @app.post("/auth/signup")
 async def signup(req: SignupRequest):
     clean_email = req.email.lower().strip()
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT is_verified FROM users WHERE email = %s", (clean_email,))
-    user = cursor.fetchone()
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT is_verified FROM users WHERE email = %s", (clean_email,))
+        user = cursor.fetchone()
 
-    if user:
+        if user:
+            cursor.close()
+            if user[0]:
+                raise HTTPException(status_code=400, detail="An account with this email already exists. Please Login.")
+            else:
+                send_secure_otp(clean_email, "signup")
+                return {"message": "OTP sent to email"}
+
+        hashed_password = bcrypt.hashpw(req.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        cursor.execute(
+            "INSERT INTO users (full_name, dob, email, password_hash, is_verified) VALUES (%s, %s, %s, %s, FALSE)",
+            (req.full_name, req.dob, clean_email, hashed_password)
+        )
+        conn.commit()
         cursor.close()
-        conn.close()
-        if user[0]:
-            raise HTTPException(status_code=400, detail="An account with this email already exists. Please Login.")
-        else:
-            send_secure_otp(clean_email, "signup")
-            return {"message": "OTP sent to email"}
-
-    hashed_password = bcrypt.hashpw(req.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    cursor.execute(
-        "INSERT INTO users (full_name, dob, email, password_hash, is_verified) VALUES (%s, %s, %s, %s, FALSE)",
-        (req.full_name, req.dob, clean_email, hashed_password)
-    )
-    conn.commit()
-    cursor.close()
-    conn.close()
+    finally:
+        if conn:
+            conn.close()
 
     send_secure_otp(clean_email, "signup")
     return {"message": "Account created. Please verify OTP."}
@@ -207,60 +212,55 @@ async def signup(req: SignupRequest):
 async def verify_signup(req: VerifySignupRequest, response: Response):
     clean_email = req.email.lower().strip()
     hashed_input = hash_otp(req.otp)
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        # Check expiration directly via SQL
+        cursor.execute(
+            "SELECT id, attempts, (expires_at < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')) as is_expired FROM auth_otps WHERE email = %s AND purpose = 'signup' ORDER BY id DESC LIMIT 1",
+            (clean_email,)
+        )
+        otp_record = cursor.fetchone()
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, expires_at, attempts FROM auth_otps WHERE email = %s AND purpose = 'signup' ORDER BY created_at DESC LIMIT 1",
-        (clean_email,)
-    )
-    otp_record = cursor.fetchone()
+        if not otp_record:
+            raise HTTPException(status_code=400, detail="No active OTP found. Please request a new one.")
 
-    if not otp_record:
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=400, detail="No active OTP found. Please request a new one.")
+        otp_id, attempts, is_expired = otp_record
+        
+        if attempts >= 5:
+            cursor.execute("DELETE FROM auth_otps WHERE email = %s AND purpose = 'signup'", (clean_email,))
+            conn.commit()
+            raise HTTPException(status_code=429, detail="Too many failed attempts. Please request a new OTP.")
 
-    otp_id, expires_at, attempts = otp_record[0], otp_record[1], otp_record[2] or 0
-    if attempts >= 5:
+        if is_expired:
+            raise HTTPException(status_code=400, detail="OTP expired. Please click Resend OTP.")
+
+        cursor.execute("SELECT 1 FROM auth_otps WHERE email = %s AND otp_hash = %s AND purpose = 'signup'", (clean_email, hashed_input))
+        if not cursor.fetchone():
+            cursor.execute("UPDATE auth_otps SET attempts = attempts + 1 WHERE id = %s", (otp_id,))
+            conn.commit()
+            raise HTTPException(status_code=400, detail=f"Incorrect OTP. You have {4 - attempts} attempts left.")
+
+        cursor.execute("UPDATE users SET is_verified = TRUE WHERE email = %s RETURNING id, full_name, dob", (clean_email,))
+        user = cursor.fetchone()
+
         cursor.execute("DELETE FROM auth_otps WHERE email = %s AND purpose = 'signup'", (clean_email,))
         conn.commit()
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=429, detail="Too many failed attempts. Please request a new OTP.")
-
-    if expires_at < datetime.now(timezone.utc):
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=400, detail="OTP expired. Please request a new one.")
-
-    cursor.execute(
-        "SELECT 1 FROM auth_otps WHERE email = %s AND otp_hash = %s AND purpose = 'signup'",
-        (clean_email, hashed_input)
-    )
-    if not cursor.fetchone():
-        cursor.execute("UPDATE auth_otps SET attempts = attempts + 1 WHERE id = %s", (otp_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=400, detail="Invalid OTP code.")
-
-    cursor.execute("UPDATE users SET is_verified = TRUE WHERE email = %s RETURNING id, full_name, dob", (clean_email,))
-    user = cursor.fetchone()
-
-    cursor.execute("DELETE FROM auth_otps WHERE email = %s AND purpose = 'signup'", (clean_email,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-    dob_str = str(user[2]) if user and user[2] else ""
-    user_name = user[1] if user and user[1] else clean_email.split("@")[0]
-    access_token = create_access_token(
-        data={"sub": clean_email, "name": user_name, "dob": dob_str}
-    )
-
-    response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=False)
-    return {"message": "Verification successful", "user": {"email": clean_email, "name": user_name, "dob": dob_str}}
+        
+        dob_str = str(user[2]) if user and user[2] else ""
+        user_name = user[1] if user and user[1] else clean_email.split("@")[0]
+        access_token = create_access_token(data={"sub": clean_email, "name": user_name, "dob": dob_str})
+        response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=False)
+        return {"message": "Verification successful", "user": {"email": clean_email, "name": user_name, "dob": dob_str}}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Database connection error.")
+    finally:
+        if conn:
+            conn.close()
 
 @app.post("/auth/resend-otp")
 async def resend_otp(req: SendOtpRequest):
@@ -301,7 +301,6 @@ async def login(req: LoginRequest, response: Response):
     except Exception as e:
         raise HTTPException(status_code=500, detail="Database connection error. Please try again.")
     finally:
-        # This guarantees the connection is returned to the pool!
         if conn:
             conn.close()
 
@@ -327,72 +326,98 @@ async def login(req: LoginRequest, response: Response):
     response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=False)
     return {"message": "Login successful", "user": {"email": clean_email, "name": user_name, "dob": dob_str}}
 
-
 @app.post("/auth/forgot-password")
 async def forgot_password(req: ForgotPasswordRequest):
     clean_email = req.email.lower().strip()
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT id FROM users WHERE email = %s AND is_verified = TRUE", (clean_email,))
-    user = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id FROM users WHERE email = %s AND is_verified = TRUE", (clean_email,))
+        user = cursor.fetchone()
+        cursor.close()
+    finally:
+        if conn:
+            conn.close()
 
     if user:
         send_secure_otp(clean_email, "reset")
 
     return {"message": "If the email is registered, a password reset code has been sent."}
 
+class VerifyResetOtpRequest(BaseModel):
+    email: str
+    otp: str
+
+@app.post("/auth/verify-reset-otp")
+async def verify_reset_otp(req: VerifyResetOtpRequest):
+    clean_email = req.email.lower().strip()
+    hashed_input = hash_otp(req.otp)
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute(
+            "SELECT id, attempts, (expires_at < (CURRENT_TIMESTAMP AT TIME ZONE 'UTC')) as is_expired FROM auth_otps WHERE email = %s AND purpose = 'reset' ORDER BY id DESC LIMIT 1",
+            (clean_email,)
+        )
+        otp_record = cursor.fetchone()
+
+        if not otp_record:
+            raise HTTPException(status_code=400, detail="No reset code found. Please request a new one.")
+
+        otp_id, attempts, is_expired = otp_record
+        
+        if attempts >= 5:
+            cursor.execute("DELETE FROM auth_otps WHERE email = %s AND purpose = 'reset'", (clean_email,))
+            conn.commit()
+            raise HTTPException(status_code=429, detail="Too many failed attempts. Please request a new code.")
+
+        if is_expired:
+            raise HTTPException(status_code=400, detail="Reset code has expired. Please click Resend OTP.")
+
+        cursor.execute("SELECT 1 FROM auth_otps WHERE email = %s AND otp_hash = %s AND purpose = 'reset'", (clean_email, hashed_input))
+        if not cursor.fetchone():
+            cursor.execute("UPDATE auth_otps SET attempts = attempts + 1 WHERE id = %s", (otp_id,))
+            conn.commit()
+            raise HTTPException(status_code=400, detail=f"Incorrect OTP. You have {4 - attempts} attempts left.")
+
+        return {"message": "OTP verified successfully. Proceed to reset password."}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Database connection error.")
+    finally:
+        if conn:
+            conn.close()
+
 @app.post("/auth/reset-password")
 async def reset_password(req: ResetPasswordRequest):
     clean_email = req.email.lower().strip()
     hashed_input = hash_otp(req.otp)
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT 1 FROM auth_otps WHERE email = %s AND otp_hash = %s AND purpose = 'reset'", (clean_email, hashed_input))
+        if not cursor.fetchone():
+            raise HTTPException(status_code=400, detail="Invalid verification code.")
 
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT id, expires_at, attempts FROM auth_otps WHERE email = %s AND purpose = 'reset' ORDER BY created_at DESC LIMIT 1",
-        (clean_email,)
-    )
-    otp_record = cursor.fetchone()
-
-    if not otp_record:
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=400, detail="Invalid or expired reset code.")
-
-    otp_id, expires_at, attempts = otp_record[0], otp_record[1], otp_record[2] or 0
-    if attempts >= 5:
+        new_hashed_password = bcrypt.hashpw(req.new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        cursor.execute("UPDATE users SET password_hash = %s WHERE email = %s", (new_hashed_password, clean_email))
         cursor.execute("DELETE FROM auth_otps WHERE email = %s AND purpose = 'reset'", (clean_email,))
         conn.commit()
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=429, detail="Too many failed attempts. Please request a new reset code.")
 
-    if expires_at < datetime.now(timezone.utc):
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=400, detail="Invalid or expired reset code.")
-
-    cursor.execute(
-        "SELECT 1 FROM auth_otps WHERE email = %s AND otp_hash = %s AND purpose = 'reset'",
-        (clean_email, hashed_input)
-    )
-    if not cursor.fetchone():
-        cursor.execute("UPDATE auth_otps SET attempts = attempts + 1 WHERE id = %s", (otp_id,))
-        conn.commit()
-        cursor.close()
-        conn.close()
-        raise HTTPException(status_code=400, detail="Invalid verification code.")
-
-    new_hashed_password = bcrypt.hashpw(req.new_password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-    cursor.execute("UPDATE users SET password_hash = %s WHERE email = %s", (new_hashed_password, clean_email))
-    cursor.execute("DELETE FROM auth_otps WHERE email = %s AND purpose = 'reset'", (clean_email,))
-    conn.commit()
-    cursor.close()
-    conn.close()
-
-    return {"message": "Password successfully reset. You can now log in."}
+        return {"message": "Password successfully reset. You can now log in."}
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Database connection error.")
+    finally:
+        if conn:
+            conn.close()
 
 @app.get("/auth/me")
 async def get_me(request: Request):

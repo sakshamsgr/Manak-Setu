@@ -27,6 +27,7 @@ export const authApi = {
   verifySignup: (data: any) => fetchAuth('/auth/signup/verify-otp', data),
   login: (data: any) => fetchAuth('/auth/login', data),
   forgotPassword: (data: any) => fetchAuth('/auth/forgot-password', data),
+  verifyResetOtp: (data: any) => fetchAuth('/auth/verify-reset-otp', data),
   resetPassword: (data: any) => fetchAuth('/auth/reset-password', data),
   logout: () => fetchAuth('/auth/logout', {}),
   getMe: () => fetchAuth('/auth/me'),

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { 
   Package, 
   BookOpen, 
@@ -51,9 +51,19 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
+  // FIX: Immediately skip Step 1 upon entering the guide, because we filled it on the Home page.
+  // This preserves Step 1 in the navigation bar but avoids showing it twice in a row.
+  useEffect(() => {
+    if (activeStep === 1) {
+      setActiveStep(2);
+    }
+    // We strictly only want this to run once when the guide completely mounts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (!guideData) return null;
 
-  // STRICT ZERO-HALLUCINATION GUARD: Check if the parser returned our \"Not Found\" fallback state
+  // STRICT ZERO-HALLUCINATION GUARD: Check if the parser returned our "Not Found" fallback state
   const isNotFound = guideData.standardDetails.code === 'Data Not Available';
 
   const steps = [
@@ -114,7 +124,7 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Save Progress Button (Issue 4) */}
+          {/* Save Progress Button */}
           <button
             onClick={handleSaveProgress}
             disabled={isSaving || isNotFound}

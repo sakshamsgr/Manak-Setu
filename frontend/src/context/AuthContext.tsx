@@ -41,6 +41,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     } finally {
       setUser(null);
       setIsAuthenticated(false);
+      
+      // FIX 3: Aggressively wipe local browser memory to prevent account data leaking
+      localStorage.clear();
+      sessionStorage.clear();
     }
   };
 

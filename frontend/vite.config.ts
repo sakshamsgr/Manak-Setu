@@ -67,10 +67,20 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: true
+        enabled: false
       }
     })
   ],
+  // FIX: Force upfront bundling of heavy dependencies to stop the 5-second hard reload
+  optimizeDeps: {
+    include: [
+      'lucide-react', 
+      'react-markdown', 
+      'canvas-confetti', 
+      'i18next', 
+      'react-i18next'
+    ]
+  },
   server: {
     port: 5173,
     proxy: {

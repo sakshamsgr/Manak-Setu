@@ -22,6 +22,7 @@ import {
 } from '../services/api';
 import { generateProductCertificationGuideData } from '../services/complianceParser';
 import { useLanguage } from './LanguageContext';
+import { useAuth } from './AuthContext'; // FIX: Imported useAuth for session tracking
 
 interface ProductContextType {
   productProfile: ProductProfile;
@@ -54,13 +55,16 @@ const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
 export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { language } = useLanguage();
+  const { user } = useAuth(); // FIX: Hooked into AuthContext
+  
   const [productProfile, setProductProfile] = useState<ProductProfile>(defaultProfile);
   const [guideData, setGuideData] = useState<ProductCertificationGuideData | null>(null);
   const [activeStep, setActiveStep] = useState<number>(1);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [savedGuides, setSavedGuides] = useState<SavedProductGuideItem[]>([]);
-  const [sessionId] = useState<string>(() => `product_session_${Date.now()}`);
+  // FIX: Made sessionId mutable so we can regenerate it on logout
+  const [sessionId, setSessionId] = useState<string>(() => `product_session_${Date.now()}`);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -86,7 +90,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const trimmed = query.trim();
     if (!trimmed && !file) return;
 
-    // Rule 9: Prevent duplicate in-flight requests
     if (isLoading) return;
 
     if (activeAbortControllerRef.current) {
@@ -100,7 +103,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setErrorMessage(null);
 
     try {
-      // 1. Authoritative Backend Database Resolution (Standards, QCO, MSME)
       const resolved = await resolveProductGuide({
         query: trimmed,
         productName: productProfile.name || trimmed,
@@ -111,7 +113,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         signal: controller.signal,
       });
 
-      // 2. Strict Zero-Hallucination Policy Check (Plan Rule 4, Section 11, 28)
       if (!resolved || !resolved.found) {
         const fallbackMsg = resolved?.message || 'No details available yet. This information will be updated in future.';
         const emptyGuide: ProductCertificationGuideData = {
@@ -165,7 +166,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return;
       }
 
-      // 3. Parallel fetch of database testing, documents, and process steps
       const standardId = resolved.standard.text_standard_id || resolved.standard.standard_number;
       const [testingRes, docsRes, processRes] = await Promise.allSettled([
         getTestingAndLabs(standardId, controller.signal),
@@ -173,7 +173,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         getStandardProcess(standardId, controller.signal),
       ]);
 
-      // 4. Multimodal attachment processing if file provided
       let fileCitations: Citation[] = [];
       let rawAiReply = '';
       if (file) {
@@ -186,7 +185,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         }
       }
 
-      // 5. Parse Routine & Type Tests from standard_tests
       const testingData = testingRes.status === 'fulfilled' ? testingRes.value : null;
       const routineTests: TestItem[] = (testingData?.routine_tests || []).map((t: any) => ({
         name: t.requirement || 'Routine Verification Test',
@@ -218,7 +216,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
       const labs = testingData?.laboratories || [];
       const groupingRules = testingData?.grouping_rules || [];
 
-      // 6. Parse Application Documents from application_documents
       const docsData = docsRes.status === 'fulfilled' ? docsRes.value : null;
       const documentChecklist: DocumentItem[] = (docsData?.documents || []).map((d: any, idx: number) => {
         let category: 'Legal' | 'Technical' | 'Quality Control' | 'Testing' = 'Technical';
@@ -243,7 +240,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         };
       });
 
-      // 7. Parse Process Steps from certification_process_steps
       const processData = processRes.status === 'fulfilled' ? processRes.value : null;
       let applicationMilestones: ApplicationMilestone[] = (processData?.steps || []).map((s: any, idx: number) => ({
         stepNumber: s.step_number || idx + 1,
@@ -258,7 +254,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         sourceUrl: s.source_url,
       }));
 
-      // Default statutory 6 milestones fallback if steps empty
       if (applicationMilestones.length === 0) {
         applicationMilestones = [
           { stepNumber: 1, title: 'Portal Registration & Form-V Submission', subtitle: 'Step 1 • Manufacturer', timeline: '1-3 Days', description: 'Register factory profile on manakonline.in and submit statutory Form-V application.', action: 'Create e-BIS account' },
@@ -270,7 +265,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ];
       }
 
-      // 8. Ground-Truth Citations
       const citations: Citation[] = [
         ...fileCitations,
         {
@@ -359,7 +353,6 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         : 'Unable to connect right now. Please try again.';
       setErrorMessage(msg);
 
-      // Safe fallback data so UI remains interactive
       const fallbackData = generateProductCertificationGuideData(
         trimmed,
         `⚠️ **${msg}**`,
@@ -435,9 +428,20 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
     }
   }, []);
 
+  // FIX: Aggressive account isolation enforcement. 
+  // Wipes context completely if no user is authenticated, otherwise fetches specific data.
   useEffect(() => {
-    fetchSavedGuides();
-  }, [fetchSavedGuides]);
+    if (!user) {
+      setGuideData(null);
+      setProductProfile(defaultProfile);
+      setActiveStep(1);
+      setErrorMessage(null);
+      setSavedGuides([]);
+      setSessionId(`product_session_${Date.now()}`);
+    } else {
+      fetchSavedGuides();
+    }
+  }, [user, fetchSavedGuides]);
 
   const saveJourney = useCallback(async (): Promise<{ success: boolean; message: string }> => {
     if (!guideData && !productProfile.name) {
