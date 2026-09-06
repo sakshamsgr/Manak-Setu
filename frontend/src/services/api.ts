@@ -555,6 +555,12 @@ export interface RecommendedLab {
   status: string;
   source_url?: string;
   testing_charge?: number;
+  testing_scopes?: {
+    testing_charge?: number;
+    currency?: string;
+    grade_type_size?: string;
+    remarks?: string;
+  }[];
   currency: string;
   remarks?: string;
   proximity_tier: string;

@@ -144,7 +144,6 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
     setActiveLocationLabel(loc);
     sessionStorage.setItem('bis_user_location', loc);
     setActiveTab('labs');
-    await fetchRecommendations(loc);
   };
 
   const handleSkipLocation = () => {
@@ -167,6 +166,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
         state: rl.state,
         status: rl.status || 'Recognized (Valid)',
         testingCharge: rl.testing_charge,
+        testingScopes: rl.testing_scopes,
         currency: rl.currency || 'INR',
         sourceUrl: rl.source_url,
         remarks: rl.remarks,
@@ -175,6 +175,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
     : baseLabs.map(l => ({
         ...l,
         status: 'Recognized (Valid)',
+        testingScopes: undefined,
         proximityTier: 'National BIS Network',
       }));
 
@@ -599,12 +600,38 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
                       <span className="leading-relaxed">{lab.address}, {lab.city}, {lab.state}</span>
                     </div>
 
-                    {lab.remarks && (
+                    {lab.testingScopes && lab.testingScopes.length > 0 ? (
+                      <div className="text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200/70 space-y-1.5">
+                        <span className="font-semibold text-slate-700 block">
+                          Testing Scopes & Charges:
+                        </span>
+
+                        {lab.testingScopes.map((scope, scopeIdx) => (
+                          <div
+                            key={`${scope.grade_type_size || "scope"}-${scope.testing_charge ?? "na"}-${scopeIdx}`}
+                            className="flex items-center justify-between gap-3"
+                          >
+                            <span className="text-slate-700">
+                              {scope.grade_type_size || "Standard testing scope"}
+                            </span>
+
+                            {scope.testing_charge != null && (
+                              <span className="font-mono font-bold text-emerald-700 shrink-0">
+                                ₹{scope.testing_charge.toLocaleString()}{" "}
+                                {scope.currency || lab.currency}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    ) : lab.remarks ? (
                       <div className="text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200/70">
-                        <span className="font-semibold text-slate-700">Testing Scope: </span>
+                        <span className="font-semibold text-slate-700">
+                          Testing Scope:{" "}
+                        </span>
                         <span>{lab.remarks}</span>
                       </div>
-                    )}
+                    ) : null}
                   </div>
 
                   <div className="flex items-center justify-between pt-2.5 border-t border-slate-200/70 text-xs">
