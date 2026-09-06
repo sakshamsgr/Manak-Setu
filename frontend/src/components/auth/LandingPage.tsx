@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Mail, KeyRound, User, Loader2, Calendar, Eye, EyeOff, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, Mail, KeyRound, User, Loader2, Calendar, Eye, EyeOff, ArrowLeft, RotateCcw } from 'lucide-react';
 import { authApi } from '../../services/authApi';
 import { useAuth } from '../../context/AuthContext';
 
@@ -26,6 +26,23 @@ export const LandingPage: React.FC = () => {
     setSuccessMsg(null);
   };
 
+  // FIX: Completely clear the state when navigating between views
+  const clearFormState = () => {
+    setEmail('');
+    setPassword('');
+    setConfirmPassword('');
+    setFullName('');
+    setDob('');
+    setOtp('');
+    setShowPassword(false);
+    clearMessages();
+  };
+
+  const handleSwitchStep = (newStep: AuthStep) => {
+    clearFormState();
+    setStep(newStep);
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
@@ -34,7 +51,14 @@ export const LandingPage: React.FC = () => {
       await authApi.login({ email, password });
       await checkSession(); 
     } catch (err: any) {
-      setError(err.message || 'Invalid email or password.');
+      const errorMsg = err.message?.toLowerCase() || '';
+      // FIX: Trap unverified users who try to login and send them to OTP
+      if (errorMsg.includes('unverified') || errorMsg.includes('email not confirmed')) {
+        setStep('verify-signup');
+        setError('Your account is unverified. Please check your email for the OTP to continue.');
+      } else {
+        setError(err.message || 'Invalid email or password.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -55,8 +79,16 @@ export const LandingPage: React.FC = () => {
     try {
       await authApi.signup({ full_name: fullName.trim(), dob, email, password });
       setStep('verify-signup');
+      setSuccessMsg(`OTP sent to ${email}`);
     } catch (err: any) {
-      setError(err.message || 'Signup failed.');
+      const errorMsg = err.message?.toLowerCase() || '';
+      // FIX: Seamlessly handle users who already signed up but didn't verify
+      if (errorMsg.includes('already exists') || errorMsg.includes('already registered')) {
+        setStep('verify-signup');
+        setError('An account with this email already exists but is unverified. Please enter your OTP.');
+      } else {
+        setError(err.message || 'Signup failed.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -76,6 +108,21 @@ export const LandingPage: React.FC = () => {
     }
   };
 
+  // FIX: Added dedicated Resend OTP function
+  const handleResendOTP = async () => {
+    clearMessages();
+    setIsLoading(true);
+    try {
+      // Note: Ensure `resendOtp` is implemented in your authApi.ts!
+      await authApi.resendOtp({ email });
+      setSuccessMsg('A new OTP has been sent to your email.');
+    } catch (err: any) {
+      setError(err.message || 'Failed to resend OTP.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleForgotPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     clearMessages();
@@ -83,9 +130,8 @@ export const LandingPage: React.FC = () => {
     try {
       const res = await authApi.forgotPassword({ email });
       setSuccessMsg(res.message);
-      setStep('verify-forgot'); // Only proceed if successful
+      setStep('verify-forgot'); 
     } catch (err: any) {
-      // If backend throws 404, show error and stay on this page
       setError(err.message || 'Failed to send reset code.');
     } finally {
       setIsLoading(false);
@@ -151,15 +197,15 @@ export const LandingPage: React.FC = () => {
               <h2 className="text-2xl font-bold text-slate-900">Welcome</h2>
               <p className="text-slate-500 text-sm">Login / Sign Up to Continue</p>
               <div className="space-y-3 pt-4">
-                <button onClick={() => { clearMessages(); setStep('login'); }} className="w-full py-3.5 bg-bis-900 hover:bg-bis-800 text-white font-bold rounded-xl shadow transition">Login</button>
-                <button onClick={() => { clearMessages(); setStep('signup'); }} className="w-full py-3.5 bg-white border-2 border-bis-900 text-bis-900 hover:bg-slate-50 font-bold rounded-xl transition">Sign Up</button>
+                <button onClick={() => handleSwitchStep('login')} className="w-full py-3.5 bg-bis-900 hover:bg-bis-800 text-white font-bold rounded-xl shadow transition">Login</button>
+                <button onClick={() => handleSwitchStep('signup')} className="w-full py-3.5 bg-white border-2 border-bis-900 text-bis-900 hover:bg-slate-50 font-bold rounded-xl transition">Sign Up</button>
               </div>
             </div>
           )}
 
           {step === 'login' && (
             <form onSubmit={handleLogin} className="space-y-4 animate-fade-in">
-              <button type="button" onClick={() => { clearMessages(); setStep('intro'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+              <button type="button" onClick={() => handleSwitchStep('intro')} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
                 <ArrowLeft className="w-3 h-3" /> Back
               </button>
               <div className="text-center mb-6">
@@ -172,7 +218,8 @@ export const LandingPage: React.FC = () => {
                 <label className="text-xs font-bold text-slate-700 ml-1">Email Address</label>
                 <div className="relative">
                   <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
-                  <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all" />
+                  {/* FIX: Added autoComplete="username" */}
+                  <input type="email" required autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all" />
                 </div>
               </div>
 
@@ -180,58 +227,78 @@ export const LandingPage: React.FC = () => {
                 <label className="text-xs font-bold text-slate-700 ml-1">Password</label>
                 <div className="relative">
                   <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
-                  <input type={showPassword ? "text" : "password"} required value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-12 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all" />
+                  {/* FIX: Added autoComplete="current-password" */}
+                  <input type={showPassword ? "text" : "password"} required autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-12 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all" />
                   <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
               </div>
               
-              {error && <p className="text-xs text-rose-500 font-bold">{error}</p>}
+              {error && <p className="text-xs text-rose-500 font-bold bg-rose-50 p-2 rounded">{error}</p>}
               
               <button type="submit" disabled={isLoading} className="w-full py-3.5 bg-bis-900 hover:bg-bis-800 disabled:opacity-70 text-white font-bold rounded-xl shadow transition flex justify-center mt-4">
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Login'}
               </button>
 
               <div className="flex flex-col items-center gap-2 pt-4">
-                <button type="button" onClick={() => { clearMessages(); setStep('forgot'); }} className="text-sm font-semibold text-bis-700 hover:text-bis-900">Forgot Password?</button>
-                <p className="text-sm text-slate-500">Don't have an account? <button type="button" onClick={() => { clearMessages(); setStep('signup'); }} className="font-bold text-bis-900">Sign Up</button></p>
+                <button type="button" onClick={() => handleSwitchStep('forgot')} className="text-sm font-semibold text-bis-700 hover:text-bis-900">Forgot Password?</button>
+                <p className="text-sm text-slate-500">Don't have an account? <button type="button" onClick={() => handleSwitchStep('signup')} className="font-bold text-bis-900">Sign Up</button></p>
               </div>
             </form>
           )}
 
           {step === 'signup' && (
-            <form onSubmit={handleSignup} className="space-y-3 animate-fade-in">
-              <button type="button" onClick={() => { clearMessages(); setStep('intro'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+            <form onSubmit={handleSignup} className="space-y-3 animate-fade-in" autoComplete="off">
+              <button type="button" onClick={() => handleSwitchStep('intro')} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
                 <ArrowLeft className="w-3 h-3" /> Back
               </button>
               <div className="text-center mb-4"><h2 className="text-xl font-bold text-slate-900">Create your Account</h2></div>
               
-              <div className="relative"><User className="w-5 h-5 text-slate-400 absolute left-4 top-3" /><input type="text" required placeholder="Full Name" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" /></div>
-              <div className="relative"><Calendar className="w-5 h-5 text-slate-400 absolute left-4 top-3" /><input type="date" required max={maxDate} value={dob} onChange={(e) => setDob(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm text-slate-700" /></div>
-              <div className="relative"><Mail className="w-5 h-5 text-slate-400 absolute left-4 top-3" /><input type="email" required placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" /></div>
+              <div className="relative">
+                <User className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
+                <input type="text" required placeholder="Full Name" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" />
+              </div>
+              
+              <div className="relative">
+                <Calendar className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
+                <input type="date" required max={maxDate} value={dob} onChange={(e) => setDob(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm text-slate-700" />
+              </div>
+              
+              <div className="relative">
+                <Mail className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
+                <input type="email" required placeholder="Email Address" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" />
+              </div>
               
               <div className="relative">
                 <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
-                <input type={showPassword ? "text" : "password"} required minLength={8} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-12 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" />
+                {/* FIX: Added autoComplete="new-password" */}
+                <input type={showPassword ? "text" : "password"} required autoComplete="new-password" minLength={8} placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-12 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3 text-slate-400 hover:text-slate-600">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
-              <div className="relative"><KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3" /><input type={showPassword ? "text" : "password"} required minLength={8} placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" /></div>
               
-              {error && <p className="text-xs text-rose-500 font-bold">{error}</p>}
+              <div className="relative">
+                <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
+                {/* FIX: Added autoComplete="new-password" */}
+                <input type={showPassword ? "text" : "password"} required autoComplete="new-password" minLength={8} placeholder="Confirm Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" />
+              </div>
+              
+              {error && <p className="text-xs text-rose-500 font-bold bg-rose-50 p-2 rounded">{error}</p>}
               
               <button type="submit" disabled={isLoading} className="w-full py-3 bg-bis-900 hover:bg-bis-800 text-white font-bold rounded-xl shadow transition flex justify-center">
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Continue'}
               </button>
-              <div className="text-center pt-2"><p className="text-sm text-slate-500">Already have an account? <button type="button" onClick={() => { clearMessages(); setStep('login'); }} className="font-bold text-bis-900">Login</button></p></div>
+              <div className="text-center pt-2">
+                <p className="text-sm text-slate-500">Already have an account? <button type="button" onClick={() => handleSwitchStep('login')} className="font-bold text-bis-900">Login</button></p>
+              </div>
             </form>
           )}
 
           {step === 'verify-signup' && (
             <form onSubmit={handleVerifySignup} className="space-y-5 animate-fade-in">
-              <button type="button" onClick={() => { clearMessages(); setStep('signup'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+              <button type="button" onClick={() => handleSwitchStep('signup')} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
                 <ArrowLeft className="w-3 h-3" /> Back
               </button>
               <h2 className="text-2xl font-bold text-slate-900">Verify your email</h2>
@@ -240,16 +307,26 @@ export const LandingPage: React.FC = () => {
                 <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3.5" />
                 <input type="text" required maxLength={6} placeholder="_ _ _ _ _ _" value={otp} onChange={(e) => setOtp(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-slate-900 focus:ring-2 focus:ring-bis-500 transition-all font-mono tracking-widest text-lg text-center" />
               </div>
-              {error && <p className="text-xs text-rose-500 font-bold">{error}</p>}
+              
+              {error && <p className="text-xs text-rose-500 font-bold bg-rose-50 p-2 rounded">{error}</p>}
+              {successMsg && <p className="text-xs text-emerald-600 font-bold bg-emerald-50 p-2 rounded">{successMsg}</p>}
+              
               <button type="submit" disabled={isLoading || otp.length < 5} className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow transition flex justify-center">
                 {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Verify Registration'}
               </button>
+
+              {/* FIX: Added Resend OTP Button */}
+              <div className="flex justify-center pt-2">
+                <button type="button" onClick={handleResendOTP} disabled={isLoading} className="flex items-center gap-2 text-sm font-semibold text-bis-700 hover:text-bis-900 disabled:opacity-50">
+                  <RotateCcw className="w-4 h-4" /> Resend OTP
+                </button>
+              </div>
             </form>
           )}
 
           {step === 'forgot' && (
             <form onSubmit={handleForgotPassword} className="space-y-4 animate-fade-in">
-              <button type="button" onClick={() => { clearMessages(); setStep('login'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+              <button type="button" onClick={() => handleSwitchStep('login')} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
                 <ArrowLeft className="w-3 h-3" /> Back to Login
               </button>
               <h2 className="text-2xl font-bold text-slate-900">Forgot Password</h2>
@@ -267,7 +344,7 @@ export const LandingPage: React.FC = () => {
 
           {step === 'verify-forgot' && (
             <form onSubmit={handleVerifyForgot} className="space-y-5 animate-fade-in">
-              <button type="button" onClick={() => { clearMessages(); setStep('forgot'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+              <button type="button" onClick={() => handleSwitchStep('forgot')} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
                 <ArrowLeft className="w-3 h-3" /> Back
               </button>
               <h2 className="text-2xl font-bold text-slate-900">Verify Reset Code</h2>
@@ -284,21 +361,21 @@ export const LandingPage: React.FC = () => {
           )}
 
           {step === 'reset-password' && (
-            <form onSubmit={handleResetPassword} className="space-y-4 animate-fade-in">
-              <button type="button" onClick={() => { clearMessages(); setStep('verify-forgot'); }} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
+            <form onSubmit={handleResetPassword} className="space-y-4 animate-fade-in" autoComplete="off">
+              <button type="button" onClick={() => handleSwitchStep('verify-forgot')} className="flex items-center gap-1 text-xs font-bold text-slate-400 hover:text-slate-800 mb-2 transition-colors">
                 <ArrowLeft className="w-3 h-3" /> Back
               </button>
               <h2 className="text-2xl font-bold text-slate-900">Set New Password</h2>
               <div className="relative">
                 <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
-                <input type={showPassword ? "text" : "password"} required minLength={8} placeholder="New Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-12 py-3 rounded-xl border border-slate-300 bg-slate-50 text-sm" />
+                <input type={showPassword ? "text" : "password"} required minLength={8} autoComplete="new-password" placeholder="New Password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full pl-12 pr-12 py-3 rounded-xl border border-slate-300 bg-slate-50 text-sm" />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-3.5 text-slate-400 hover:text-slate-600">
                   {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                 </button>
               </div>
               <div className="relative">
                 <KeyRound className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
-                <input type={showPassword ? "text" : "password"} required minLength={8} placeholder="Confirm New Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 text-sm" />
+                <input type={showPassword ? "text" : "password"} required minLength={8} autoComplete="new-password" placeholder="Confirm New Password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full pl-12 pr-4 py-3 rounded-xl border border-slate-300 bg-slate-50 text-sm" />
               </div>
               {error && <p className="text-xs text-rose-500 font-bold">{error}</p>}
               <button type="submit" disabled={isLoading} className="w-full py-3.5 bg-bis-900 hover:bg-bis-800 text-white font-bold rounded-xl shadow transition flex justify-center">

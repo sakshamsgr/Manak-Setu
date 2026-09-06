@@ -30,4 +30,6 @@ export const authApi = {
   resetPassword: (data: any) => fetchAuth('/auth/reset-password', data),
   logout: () => fetchAuth('/auth/logout', {}),
   getMe: () => fetchAuth('/auth/me'),
+  // FIX: Added the mapping for the Resend OTP button
+  resendOtp: (data: any) => fetchAuth('/auth/resend-otp', data),
 };

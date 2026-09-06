@@ -262,15 +262,48 @@ async def verify_signup(req: VerifySignupRequest, response: Response):
     response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=False)
     return {"message": "Verification successful", "user": {"email": clean_email, "name": user_name, "dob": dob_str}}
 
+@app.post("/auth/resend-otp")
+async def resend_otp(req: SendOtpRequest):
+    clean_email = req.email.lower().strip()
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT is_verified FROM users WHERE email = %s", (clean_email,))
+        user = cursor.fetchone()
+        cursor.close()
+
+        if not user:
+            raise HTTPException(status_code=404, detail="Account not found. Please sign up first.")
+        if user[0]:
+            raise HTTPException(status_code=400, detail="Account is already verified. Please log in.")
+
+        send_secure_otp(clean_email, "signup")
+        return {"message": "A new OTP has been sent to your email."}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Internal server error while resending OTP.")
+    finally:
+        if conn:
+            conn.close()
+
 @app.post("/auth/login")
 async def login(req: LoginRequest, response: Response):
     clean_email = req.email.lower().strip()
-    conn = get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT password_hash, full_name, is_verified, dob FROM users WHERE email = %s", (clean_email,))
-    user = cursor.fetchone()
-    cursor.close()
-    conn.close()
+    conn = None
+    try:
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT password_hash, full_name, is_verified, dob FROM users WHERE email = %s", (clean_email,))
+        user = cursor.fetchone()
+        cursor.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Database connection error. Please try again.")
+    finally:
+        # This guarantees the connection is returned to the pool!
+        if conn:
+            conn.close()
 
     if not user or not user[0]:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
@@ -293,6 +326,7 @@ async def login(req: LoginRequest, response: Response):
     )
     response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=False)
     return {"message": "Login successful", "user": {"email": clean_email, "name": user_name, "dob": dob_str}}
+
 
 @app.post("/auth/forgot-password")
 async def forgot_password(req: ForgotPasswordRequest):
