@@ -1,6 +1,7 @@
 import os
 import io
-import fitz  # PyMuPDF
+import time  # Added for rate limit handling
+import pymupdf  # Replaced 'fitz' to clear deprecation warning
 import pytesseract
 from PIL import Image
 import psycopg2
@@ -70,7 +71,7 @@ def process_and_index():
         public_url = supabase.storage.from_(BUCKET_NAME).get_public_url(filename)
 
         # 3. Read PDF with PyMuPDF & OCR
-        pdf_doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        pdf_doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
         print(f"Processing {len(pdf_doc)} pages with OCR...")
 
         # Register standard in metadata table
@@ -96,18 +97,39 @@ def process_and_index():
 
             # 5. Split into chunks and generate vector embeddings
             chunks = chunk_text(text, chunk_size=300, overlap=50)
+            
             for chunk in chunks:
-                response = ai_client.models.embed_content(
-                    model="gemini-embedding-001",
-                    contents=chunk,
-                    config=types.EmbedContentConfig(output_dimensionality=768)
-                )
-                embedding = response.embeddings[0].values
+                max_retries = 5
+                
+                # --- Rate Limit / Retry Logic Block ---
+                for attempt in range(max_retries):
+                    try:
+                        response = ai_client.models.embed_content(
+                            model="gemini-embedding-001",
+                            contents=chunk,
+                            config=types.EmbedContentConfig(output_dimensionality=768)
+                        )
+                        embedding = response.embeddings[0].values
 
-                cursor.execute("""
-                    INSERT INTO standard_chunks (standard_id, page_number, content, embedding)
-                    VALUES (%s, %s, %s, %s);
-                """, (standard_id, page_idx + 1, chunk, embedding))
+                        cursor.execute("""
+                            INSERT INTO standard_chunks (standard_id, page_number, content, embedding)
+                            VALUES (%s, %s, %s, %s);
+                        """, (standard_id, page_idx + 1, chunk, embedding))
+                        
+                        break # Success! Break out of the retry loop
+                        
+                    except Exception as e:
+                        if "429" in str(e) or "RESOURCE_EXHAUSTED" in str(e):
+                            # Exponential backoff: 2s, 4s, 8s, 16s...
+                            sleep_time = 2 ** (attempt + 1)
+                            print(f"    [!] API Rate Limit Hit. Pausing for {sleep_time} seconds (Attempt {attempt+1}/{max_retries})...")
+                            time.sleep(sleep_time)
+                        else:
+                            raise e # If it is a different error, crash normally
+                
+                # Baseline pacing: Pause for 0.75 seconds between every successful chunk
+                # This guarantees we stay around ~80 requests per minute.
+                time.sleep(0.75)
 
         conn.commit()
         print(f"Successfully processed and indexed '{filename}'.")
