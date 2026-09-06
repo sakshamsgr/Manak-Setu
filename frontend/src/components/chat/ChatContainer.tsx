@@ -12,6 +12,7 @@ interface ChatContainerProps {
   onSendMessage: (message: string) => void;
   onSendAttachment: (message: string, file: File) => void;
   onClearChat: () => void;
+  onRetry?: () => void;
 }
 
 export const ChatContainer: React.FC<ChatContainerProps> = ({
@@ -21,6 +22,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   onSendMessage,
   onSendAttachment,
   onClearChat,
+  onRetry,
 }) => {
   const showQuickPrompts = messages.length <= 1;
 
@@ -54,7 +56,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       )}
 
       {/* Message List */}
-      <MessageList messages={messages} isLoading={isLoading} />
+      <MessageList messages={messages} isLoading={isLoading} onRetry={onRetry} />
 
       {/* Input Box */}
       <ChatInput

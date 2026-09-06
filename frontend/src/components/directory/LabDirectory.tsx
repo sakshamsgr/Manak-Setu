@@ -103,7 +103,7 @@ const BIS_LABS_DATA: BISLab[] = [
   },
   {
     id: 'rec-tuv-bangalore',
-    name: 'TÜV Rheinland India Testing Lab (Recognized)',
+    name: 'TÃœV Rheinland India Testing Lab (Recognized)',
     type: 'BIS Recognized Lab',
     city: 'Bengaluru',
     state: 'Karnataka',

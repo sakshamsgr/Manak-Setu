@@ -15,17 +15,19 @@ import {
 import { sendChatMessage } from '../../services/api';
 import { Citation } from '../../types/chat';
 import { Modal } from '../common/Modal';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface StandardsQCOExplorerProps {
   onConsultStandard?: (prompt: string) => void;
 }
 
 export const StandardsQCOExplorer: React.FC<StandardsQCOExplorerProps> = ({ onConsultStandard }) => {
+  const { language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   
-  // Dynamic RAG State
+  // Dynamic AI State
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [retrievedDocs, setRetrievedDocs] = useState<Citation[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<Citation | null>(null);
@@ -46,7 +48,7 @@ export const StandardsQCOExplorer: React.FC<StandardsQCOExplorerProps> = ({ onCo
       // We instruct the AI to act as a catalog searcher for this page
       const prompt = `Identify the specific Indian Standards (IS codes), Quality Control Orders (QCOs), and testing parameters for: ${searchQuery}. Summarize the requirements.`;
       
-      const res = await sendChatMessage(sessionId, prompt);
+      const res = await sendChatMessage(sessionId, prompt, language);
       setAiSummary(res.reply);
 
       // Deduplicate citations by document name and page so the UI grid looks clean
@@ -63,7 +65,7 @@ export const StandardsQCOExplorer: React.FC<StandardsQCOExplorerProps> = ({ onCo
       setRetrievedDocs(uniqueDocs);
     } catch (error) {
       console.error("Database search failed:", error);
-      setAiSummary("Unable to connect to the BIS RAG Database. Please ensure the FastAPI backend is running.");
+      setAiSummary("Unable to connect to the BIS Standards Database. Please ensure the API backend is running.");
     } finally {
       setIsLoading(false);
     }
@@ -78,7 +80,7 @@ export const StandardsQCOExplorer: React.FC<StandardsQCOExplorerProps> = ({ onCo
             <Database className="w-3.5 h-3.5" />
             Live Database Search
           </span>
-          <span className="text-xs text-slate-300">Powered by RAG Vector Retrieval</span>
+          <span className="text-xs text-slate-300">Official BIS Standards Repository</span>
         </div>
         <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight">
           Indian Standards (IS) & Quality Control Orders (QCO)

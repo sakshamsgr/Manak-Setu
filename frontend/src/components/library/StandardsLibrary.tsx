@@ -105,7 +105,7 @@ const INDIAN_STANDARDS_CATALOG: IndianStandard[] = [
     status: 'Mandatory QCO',
     scope: 'Specifies requirements and tests for the safe operation of portable sealed secondary lithium cells and batteries used in electronic devices.',
     productKeywords: ['Lithium-ion Battery', 'Power Bank', 'EV Battery Pack', 'Laptop Battery', 'Mobile Phone Battery'],
-    keyTests: ['Continuous Charging Under Low/High Temperature', 'External Short Circuit Test', 'Free Fall & Mechanical Shock', 'Thermal Abuse (130°C Oven)', 'Overcharge & Forced Discharge'],
+    keyTests: ['Continuous Charging Under Low/High Temperature', 'External Short Circuit Test', 'Free Fall & Mechanical Shock', 'Thermal Abuse (130Â°C Oven)', 'Overcharge & Forced Discharge'],
   },
 ];
 
@@ -290,7 +290,7 @@ export const StandardsLibrary: React.FC<StandardsLibraryProps> = ({ onAskAIAbout
               <h3 className="text-base font-bold text-slate-900">{selectedStandard.title}</h3>
               <div className="flex items-center gap-2 text-xs text-slate-500">
                 <span>Category: {selectedStandard.category}</span>
-                <span>•</span>
+                <span>â€¢</span>
                 <span>Year: {selectedStandard.year}</span>
               </div>
             </div>

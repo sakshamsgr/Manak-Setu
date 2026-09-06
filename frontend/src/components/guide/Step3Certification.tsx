@@ -61,11 +61,52 @@ export const Step3Certification: React.FC<Step3CertificationProps> = ({
           </div>
         </div>
 
-        <div className="space-y-1">
-          <div className="text-xs font-bold text-slate-700">Quality Control Order (QCO) Reference:</div>
-          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200 font-mono">
-            {certificationDetails.qcoNotification}
-          </p>
+        {/* QCO Information Card */}
+        <div className="space-y-3 pt-1">
+          <div className="text-xs font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+            <FileCheck2 className="w-4 h-4 text-bis-700" />
+            <span>Quality Control Order (QCO) Regulatory Framework</span>
+          </div>
+
+          {certificationDetails.qcoName ? (
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+              <div>
+                <span className="text-[10px] font-extrabold uppercase text-bis-700 tracking-wider">Order Title</span>
+                <p className="text-xs sm:text-sm font-bold text-slate-900 mt-0.5">{certificationDetails.qcoName}</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2 border-t border-slate-200/60 text-xs">
+                {certificationDetails.qcoNotification && (
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-500">Gazette S.O. Number</span>
+                    <p className="font-mono font-semibold text-slate-800">{certificationDetails.qcoNotification}</p>
+                  </div>
+                )}
+                {certificationDetails.notifyingAuthority && (
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-500">Notifying Authority</span>
+                    <p className="font-semibold text-slate-800">{certificationDetails.notifyingAuthority}</p>
+                  </div>
+                )}
+                {certificationDetails.notificationDate && (
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-slate-500">Notification Date</span>
+                    <p className="font-mono font-semibold text-slate-800">{certificationDetails.notificationDate}</p>
+                  </div>
+                )}
+                {certificationDetails.complianceDeadline && (
+                  <div>
+                    <span className="text-[10px] font-bold uppercase text-amber-700">Enforcement Deadline</span>
+                    <p className="font-mono font-bold text-amber-900">{certificationDetails.complianceDeadline}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed bg-slate-50 p-3 rounded-xl border border-slate-200 font-mono">
+              {certificationDetails.qcoNotification || 'No mandatory QCO notified yet for this standard. Voluntary certification available.'}
+            </p>
+          )}
         </div>
       </div>
 
@@ -78,12 +119,16 @@ export const Step3Certification: React.FC<Step3CertificationProps> = ({
             <span>{t('s3Conditions')}</span>
           </div>
           <ul className="space-y-2">
-            {certificationDetails.keyConditions.map((cond, i) => (
-              <li key={i} className="text-xs text-slate-700 flex items-start gap-2 leading-relaxed">
-                <CheckCircle2 className="w-3.5 h-3.5 text-bis-700 shrink-0 mt-0.5" />
-                <span>{cond}</span>
-              </li>
-            ))}
+            {certificationDetails.keyConditions && certificationDetails.keyConditions.length > 0 ? (
+              certificationDetails.keyConditions.map((cond, i) => (
+                <li key={i} className="text-xs text-slate-700 flex items-start gap-2 leading-relaxed">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-bis-700 shrink-0 mt-0.5" />
+                  <span>{cond}</span>
+                </li>
+              ))
+            ) : (
+              <li className="text-xs text-slate-600">Standard statutory testing and factory audit conditions apply under Scheme-I.</li>
+            )}
           </ul>
         </div>
 
@@ -91,16 +136,23 @@ export const Step3Certification: React.FC<Step3CertificationProps> = ({
         <div className="p-5 rounded-2xl bg-amber-50/50 border border-amber-200 shadow-sm space-y-3">
           <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-amber-900">
             <Gift className="w-4 h-4 text-amber-600" />
-            <span>MSME & Startup Concessions</span>
+            <span>MSME & Startup Statutory Concessions</span>
           </div>
-          <ul className="space-y-2">
-            {certificationDetails.exemptions.map((ex, i) => (
-              <li key={i} className="text-xs text-amber-900 flex items-start gap-2 leading-relaxed">
-                <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
-                <span>{ex}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="space-y-2">
+            {certificationDetails.msmeBenefitDetails ? (
+              <p className="text-xs text-amber-950 font-medium leading-relaxed p-3 rounded-xl bg-amber-100/60 border border-amber-300/60">
+                {certificationDetails.msmeBenefitDetails}
+              </p>
+            ) : null}
+            <ul className="space-y-2">
+              {certificationDetails.exemptions && certificationDetails.exemptions.map((ex, i) => (
+                <li key={i} className="text-xs text-amber-900 flex items-start gap-2 leading-relaxed">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                  <span>{ex}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
       </div>
 

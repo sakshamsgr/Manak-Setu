@@ -13,7 +13,7 @@ export const GovBanner: React.FC = () => {
           <span className="font-bold text-amber-400 tracking-wide">{t('gov.indiaHindi')}</span>
           <span className="text-slate-600">|</span>
           <span className="font-semibold text-slate-200">{t('gov.india')}</span>
-          <span className="hidden md:inline text-slate-400">• {t('gov.ministry')}</span>
+          <span className="hidden md:inline text-slate-400">â€¢ {t('gov.ministry')}</span>
         </div>
 
         {/* Right: Official Portal Jump Links */}

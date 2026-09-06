@@ -39,3 +39,27 @@ export interface FeeCalculationResult {
   schemeGuidelines: string[];
   applicableStandardNotice: string;
 }
+
+export interface DatabaseFeeItem {
+  category: string;
+  amount: number;
+  concession: number;
+  net: number;
+  notes: string;
+}
+
+export interface DatabaseFeeCalculationResponse {
+  currency: string;
+  currency_symbol: string;
+  industry_scale: string;
+  is_foreign: boolean;
+  concession_percentage: number;
+  items: DatabaseFeeItem[];
+  subtotal: number;
+  tax_rate_percentage: number;
+  tax_amount: number;
+  total_year_1: number;
+  annual_recurring_year_2: number;
+  optimization_guidelines?: string[];
+}
+

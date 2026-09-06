@@ -25,7 +25,7 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 160)}px`;
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 100)}px`;
     }
   }, [text]);
 
@@ -103,17 +103,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
   };
 
   return (
-    <div className="p-3 sm:p-4 bg-white border-t border-slate-200/90 shadow-sm">
-      <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-2">
+    <div className="p-2 sm:p-2.5 bg-white border-t border-slate-200/90 shadow-sm">
+      <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-1">
         {/* Selected Attachment Pill */}
         {selectedFile && (
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-bis-50 border border-bis-200 text-xs text-bis-900 animate-fade-in w-fit">
+          <div className="flex items-center gap-1.5 p-1.5 rounded-lg bg-bis-50 border border-bis-200 text-xs text-bis-900 animate-fade-in w-fit">
             {selectedFile.type.startsWith('image/') ? (
-              <ImageIcon className="w-4 h-4 text-bis-600" />
+              <ImageIcon className="w-3.5 h-3.5 text-bis-600" />
             ) : (
-              <FileText className="w-4 h-4 text-bis-600" />
+              <FileText className="w-3.5 h-3.5 text-bis-600" />
             )}
-            <span className="font-medium max-w-[200px] truncate">{selectedFile.name}</span>
+            <span className="font-medium max-w-[180px] truncate">{selectedFile.name}</span>
             <span className="text-[10px] text-slate-400">
               ({(selectedFile.size / 1024).toFixed(1)} KB)
             </span>
@@ -122,13 +122,13 @@ export const ChatInput: React.FC<ChatInputProps> = ({
               onClick={handleClearFile}
               className="p-0.5 hover:bg-bis-200/60 rounded text-bis-700 transition-colors"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
             </button>
           </div>
         )}
 
         {/* Text Input Row */}
-        <div className="relative flex items-end gap-2 bg-slate-50 border border-slate-300 focus-within:border-bis-600 focus-within:ring-2 focus-within:ring-bis-100 rounded-2xl p-2 transition-all shadow-inner">
+        <div className="relative flex items-center gap-1.5 bg-slate-50 border border-slate-300 focus-within:border-bis-600 focus-within:ring-2 focus-within:ring-bis-100 rounded-xl p-1.5 px-2 transition-all shadow-inner">
           {/* File Attachment Button */}
           <input
             ref={fileInputRef}
@@ -140,17 +140,17 @@ export const ChatInput: React.FC<ChatInputProps> = ({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="p-2 text-slate-500 hover:text-bis-800 hover:bg-slate-200/60 rounded-xl transition-colors shrink-0"
+            className="p-1.5 text-slate-500 hover:text-bis-800 hover:bg-slate-200/60 rounded-lg transition-colors shrink-0"
             title="Attach image or standard document for compliance inspection"
           >
-            <Paperclip className="w-4 h-4 sm:w-5 sm:h-5" />
+            <Paperclip className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
 
           {/* Voice Mic Button */}
           <button
             type="button"
             onClick={handleToggleVoice}
-            className={`p-2 rounded-xl transition-colors shrink-0 ${
+            className={`p-1.5 rounded-lg transition-colors shrink-0 ${
               isRecording
                 ? 'bg-rose-500 text-white animate-pulse'
                 : 'text-slate-500 hover:text-bis-800 hover:bg-slate-200/60'
@@ -158,9 +158,9 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             title={isRecording ? 'Listening... click to stop' : 'Speak your query'}
           >
             {isRecording ? (
-              <MicOff className="w-4 h-4 sm:w-5 sm:h-5" />
+              <MicOff className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             ) : (
-              <Mic className="w-4 h-4 sm:w-5 sm:h-5" />
+              <Mic className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             )}
           </button>
 
@@ -174,37 +174,37 @@ export const ChatInput: React.FC<ChatInputProps> = ({
             placeholder={
               isRecording
                 ? 'Listening to speech...'
-                : 'Ask anything about Indian Standards (IS), ISI marking, testing fees, QCO orders...'
+                : 'Ask anything about BIS...'
             }
             rows={1}
-            className="flex-1 bg-transparent border-0 focus:ring-0 focus:outline-none resize-none py-1.5 px-1 text-sm sm:text-base text-slate-900 placeholder:text-slate-400 min-h-[38px] max-h-[160px] custom-scrollbar"
+            className="flex-1 bg-transparent border-0 focus:ring-0 focus:outline-none resize-none py-1 px-1 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 min-h-[30px] max-h-[100px] custom-scrollbar leading-relaxed"
           />
 
           {/* Send Button */}
           <button
             type="submit"
             disabled={(!text.trim() && !selectedFile) || isLoading || disabled}
-            className={`p-2 sm:px-3 sm:py-2 rounded-xl flex items-center gap-1.5 font-medium text-xs sm:text-sm transition-all shrink-0 ${
+            className={`px-2.5 py-1.5 rounded-lg flex items-center gap-1 font-semibold text-xs transition-all shrink-0 ${
               (text.trim() || selectedFile) && !isLoading
-                ? 'bg-bis-700 hover:bg-bis-600 active:bg-bis-800 text-white shadow-md'
+                ? 'bg-bis-700 hover:bg-bis-600 active:bg-bis-800 text-white shadow-sm'
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
           >
             {isLoading ? (
-              <Loader2 className="w-4 h-4 sm:w-5 sm:h-5 animate-spin" />
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
             ) : (
               <>
                 <span className="hidden sm:inline">Consult</span>
-                <Send className="w-4 h-4 sm:w-4 sm:h-4" />
+                <Send className="w-3.5 h-3.5" />
               </>
             )}
           </button>
         </div>
 
         {/* Footer info note */}
-        <div className="flex items-center justify-between text-[11px] text-slate-400 px-2">
+        <div className="flex items-center justify-between text-[10px] text-slate-400 px-1 pt-0.5">
           <span>Press <strong>Enter</strong> to send, <strong>Shift+Enter</strong> for newline</span>
-          <span className="hidden sm:inline">Powered by Hybrid Vector RAG • Supabase & Gemini</span>
+          <span className="hidden sm:inline">Official BIS Portal</span>
         </div>
       </form>
     </div>

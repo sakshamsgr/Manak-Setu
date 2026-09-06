@@ -8,12 +8,12 @@ import { registerSW } from 'virtual:pwa-register'
 // Auto-register PWA service worker with auto-update
 const updateSW = registerSW({
   onNeedRefresh() {
-    if (confirm('A new version of BIS AI Assistant is available. Reload?')) {
+    if (confirm('A new version of Manak Setu is available. Reload?')) {
       updateSW(true);
     }
   },
   onOfflineReady() {
-    console.log('BIS AI Assistant is ready for offline use.');
+    console.log('Manak Setu is ready for offline use.');
   },
 });
 

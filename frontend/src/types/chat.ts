@@ -16,6 +16,8 @@ export interface ChatMessage {
   timestamp: number;
   attachmentName?: string;
   isError?: boolean;
+  isTimeout?: boolean;
+  canRetry?: boolean;
 }
 
 export interface ChatSession {

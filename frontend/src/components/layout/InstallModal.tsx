@@ -27,14 +27,14 @@ export const InstallModal: React.FC<InstallModalProps> = ({
       title={
         <div className="flex items-center gap-2 text-bis-900">
           <Download className="w-5 h-5 text-amber-500" />
-          <span className="font-extrabold">Install BIS AI Assistant PWA</span>
+          <span className="font-extrabold">Install Manak Setu PWA</span>
         </div>
       }
       maxWidth="md"
     >
       <div className="space-y-4 text-xs sm:text-sm text-slate-600">
         <p className="text-slate-700 font-medium leading-relaxed">
-          Install the Bureau of Indian Standards (BIS) AI Assistant as a standalone application on your phone or desktop for instant offline access, fast loading, and official compliance consultation.
+          Install Manak Setu — Bureau of Indian Standards (BIS) AI Compliance Portal as a standalone application on your phone or desktop for instant offline access, fast loading, and official regulatory guidance.
         </p>
 
         {isInstallable && (
@@ -48,7 +48,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({
                 onNativeInstall();
                 onClose();
               }}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-bis-950 font-extrabold rounded-xl shadow transition-all shrink-0 text-xs sm:text-sm"
+              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-bis-950 font-extrabold rounded-xl shadow transition-all shrink-0 text-xs sm:text-sm cursor-pointer"
             >
               Install App Now
             </button>
@@ -84,7 +84,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({
                 <span>Desktop (Chrome / Edge)</span>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Click the <strong className="text-slate-900">Install icon</strong> in your browser address bar (top-right) or select <strong className="text-slate-900">"Install BIS AI Assistant"</strong> from the menu.
+                Click the <strong className="text-slate-900">Install icon</strong> in your browser address bar (top-right) or select <strong className="text-slate-900">"Install Manak Setu"</strong> from the menu.
               </p>
             </div>
 
@@ -94,7 +94,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({
                 <span>Android (Chrome)</span>
               </div>
               <p className="text-xs text-slate-600 leading-relaxed">
-                Tap the browser menu <strong className="text-slate-900">(?)</strong> and select <strong className="text-slate-900">"Install app"</strong> or "Add to Home screen".
+                Tap the browser menu <strong className="text-slate-900">(⋮)</strong> and select <strong className="text-slate-900">"Install app"</strong> or "Add to Home screen".
               </p>
             </div>
           </div>

@@ -5,7 +5,7 @@ import { RawBackendResponse, ChatNormalizedResponse, Citation } from '../types/c
  * Defaults to direct FastAPI local backend URL http://127.0.0.1:8000
  * Falls back to /api or Vite proxy if direct cross-origin is restricted.
  */
-const DIRECT_BACKEND_URL = 'http://127.0.0.1:8000';
+const DIRECT_BACKEND_URL = 'http://localhost:8000';
 const PROXY_BACKEND_URL = '/api';
 
 /**
@@ -48,31 +48,93 @@ export function normalizeChatResponse(data: RawBackendResponse): ChatNormalizedR
 }
 
 /**
+ * Global 10-Second API Timeout specification (Plan Section 8)
+ */
+export const API_TIMEOUT_MS = 10000;
+
+export class ApiTimeoutError extends Error {
+  isTimeout: boolean;
+  constructor(message = 'AI response is taking longer than expected. Please try again.') {
+    super(message);
+    this.name = 'ApiTimeoutError';
+    this.isTimeout = true;
+  }
+}
+
+/**
+ * Fetch wrapper that strictly enforces a timeout (defaults to 10 seconds).
+ * Links caller's AbortSignal so either cancellation or timeout safely terminates the request.
+ */
+export async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = API_TIMEOUT_MS
+): Promise<Response> {
+  const timeoutController = new AbortController();
+  let timedOut = false;
+
+  const timer = setTimeout(() => {
+    timedOut = true;
+    timeoutController.abort();
+  }, timeoutMs);
+
+  if (options.signal) {
+    if (options.signal.aborted) {
+      clearTimeout(timer);
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    options.signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      timeoutController.abort();
+    });
+  }
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: timeoutController.signal,
+    });
+    return response;
+  } catch (error: any) {
+    if (timedOut || error.name === 'TimeoutError' || (error.name === 'AbortError' && timedOut)) {
+      throw new ApiTimeoutError();
+    }
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
  * Core Chat API Call
  * POST /chat
- * Body: { "session_id": string, "message": string, "language": string }
+ * Body: { "session_id": string, "message": string, "language": string, "context": object }
  */
 export async function sendChatMessage(
   sessionId: string, 
   message: string,
-  language: string = 'en'
+  language: string = 'en',
+  context?: Record<string, any>,
+  signal?: AbortSignal
 ): Promise<ChatNormalizedResponse> {
   const payload = {
     session_id: sessionId,
     message: message.trim(),
     language: language || 'en',
+    context: context || undefined,
   };
 
   const primaryUrl = `${getApiBaseUrl()}/chat`;
   const fallbackUrl = `${PROXY_BACKEND_URL}/chat`;
 
   try {
-    const response = await fetch(primaryUrl, {
+    const response = await fetchWithTimeout(primaryUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal,
     });
 
     if (!response.ok) {
@@ -83,15 +145,19 @@ export async function sendChatMessage(
     const data: RawBackendResponse = await response.json();
     return normalizeChatResponse(data);
   } catch (directErr: any) {
+    if (directErr.name === 'AbortError' || directErr.name === 'ApiTimeoutError' || directErr.isTimeout || directErr instanceof ApiTimeoutError) {
+      throw directErr;
+    }
     console.warn(`[BIS API Client] Direct call to ${primaryUrl} failed. Trying proxy fallback...`, directErr);
 
     try {
-      const fallbackResponse = await fetch(fallbackUrl, {
+      const fallbackResponse = await fetchWithTimeout(fallbackUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
+        signal,
       });
 
       if (!fallbackResponse.ok) {
@@ -102,10 +168,11 @@ export async function sendChatMessage(
       const fallbackData: RawBackendResponse = await fallbackResponse.json();
       return normalizeChatResponse(fallbackData);
     } catch (fallbackErr: any) {
+      if (fallbackErr.name === 'AbortError' || fallbackErr.name === 'ApiTimeoutError' || fallbackErr.isTimeout || fallbackErr instanceof ApiTimeoutError) {
+        throw fallbackErr;
+      }
       console.error('[BIS API Client] Both direct and proxy endpoints failed:', fallbackErr);
-      throw new Error(
-        `Unable to reach BIS AI Backend at ${DIRECT_BACKEND_URL}. Please ensure your FastAPI server is running with 'python api_server.py'. (${directErr.message || 'Connection Refused'})`
-      );
+      throw new Error('Unable to connect to the BIS Compliance Service. Please check your network connection and try again.');
     }
   }
 }
@@ -119,7 +186,8 @@ export async function sendMultimodalMessage(
   sessionId: string,
   message: string,
   file: File,
-  language: string = 'en'
+  language: string = 'en',
+  signal?: AbortSignal
 ): Promise<ChatNormalizedResponse> {
   const formData = new FormData();
   formData.append('session_id', sessionId);
@@ -131,9 +199,10 @@ export async function sendMultimodalMessage(
   const fallbackUrl = `${PROXY_BACKEND_URL}/chat/multimodal`;
 
   try {
-    const response = await fetch(primaryUrl, {
+    const response = await fetchWithTimeout(primaryUrl, {
       method: 'POST',
       body: formData,
+      signal,
     });
 
     if (!response.ok) {
@@ -144,9 +213,11 @@ export async function sendMultimodalMessage(
     const data: RawBackendResponse = await response.json();
     return normalizeChatResponse(data);
   } catch (err: any) {
-    const fallbackResponse = await fetch(fallbackUrl, {
+    if (err.name === 'AbortError' || err.name === 'ApiTimeoutError' || err.isTimeout || err instanceof ApiTimeoutError) throw err;
+    const fallbackResponse = await fetchWithTimeout(fallbackUrl, {
       method: 'POST',
       body: formData,
+      signal,
     });
 
     if (!fallbackResponse.ok) {
@@ -159,24 +230,361 @@ export async function sendMultimodalMessage(
 }
 
 /**
+ * Structured Product Guide Resolver: Resolves Stage 1, 2, 3 data from Supabase
+ * POST /api/product-guide/resolve
+ */
+export async function resolveProductGuide(params: {
+  query: string;
+  productName?: string;
+  industryCategory?: string;
+  enterpriseScale?: string;
+  isForeign?: boolean;
+  language?: string;
+  signal?: AbortSignal;
+}): Promise<any> {
+  const payload = {
+    query: params.query,
+    product_name: params.productName,
+    industry_category: params.industryCategory,
+    enterprise_scale: params.enterpriseScale || 'micro',
+    is_foreign: params.isForeign || false,
+    language: params.language || 'en',
+  };
+
+  const res = await fetchWithTimeout(`${getApiBaseUrl()}/api/product-guide/resolve`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: params.signal,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Product resolve failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Get Testing and Laboratories for a Standard
+ * GET /api/standards/{standard_id}/testing-and-labs
+ */
+export async function getTestingAndLabs(standardId: string, signal?: AbortSignal): Promise<any> {
+  const res = await fetchWithTimeout(`${getApiBaseUrl()}/api/standards/${encodeURIComponent(standardId)}/testing-and-labs`, {
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`Testing & labs query failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Get Application Documents for a Standard
+ * GET /api/standards/{standard_id}/documents
+ */
+export async function getStandardDocuments(standardId: string, signal?: AbortSignal): Promise<any> {
+  const res = await fetchWithTimeout(`${getApiBaseUrl()}/api/standards/${encodeURIComponent(standardId)}/documents`, {
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`Documents query failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Get Certification Process Milestones for a Standard
+ * GET /api/standards/{standard_id}/process
+ */
+export async function getStandardProcess(standardId: string, signal?: AbortSignal): Promise<any> {
+  const res = await fetchWithTimeout(`${getApiBaseUrl()}/api/standards/${encodeURIComponent(standardId)}/process`, {
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`Process query failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Get Available Standards Options for Selection / Dropdown
+ * GET /api/standards/options
+ */
+export async function getStandardsOptions(signal?: AbortSignal): Promise<{ options: Array<{ id: string; code: string; title: string }> }> {
+  const res = await fetchWithTimeout(`${getApiBaseUrl()}/api/standards/options`, { signal });
+  if (!res.ok) {
+    throw new Error(`Standards options query failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Database-Driven Fee Calculator
+ * POST /api/estimator/calculate
+ */
+export async function calculateFeeEstimate(params: {
+  standardId?: string;
+  scheme?: string;
+  industryScale?: string;
+  isForeign?: boolean;
+  numVarieties?: number;
+  inspectionDays?: number;
+  signal?: AbortSignal;
+}): Promise<any> {
+  const payload = {
+    standard_id: params.standardId || '368-2014-electric-immersion-water-heaters',
+    scheme: params.scheme || 'Scheme-I',
+    industry_scale: params.industryScale || 'micro',
+    is_foreign: params.isForeign || false,
+    num_varieties: params.numVarieties || 1,
+    inspection_days: params.inspectionDays || 2,
+  };
+
+  const res = await fetchWithTimeout(`${getApiBaseUrl()}/api/estimator/calculate`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+    signal: params.signal,
+  });
+
+  if (!res.ok) {
+    throw new Error(`Fee calculation failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface ConsumerVerificationResult {
+  query_type: 'cml' | 'huid' | 'standard';
+  input: string;
+  normalized_code?: string;
+  valid_format?: boolean;
+  title: string;
+  description: string;
+  mandatory_marks?: Array<{ mark: string; desc: string }>;
+  verification_steps?: string[];
+  official_url: string;
+  found?: boolean;
+  is_mandatory?: boolean;
+  qco?: {
+    qco_name: string;
+    notification_number: string;
+    effective_date: string;
+  } | null;
+}
+
+/**
+ * Consumer Verification API: Verify CM/L number, Gold HUID, or Indian Standard
+ * GET /api/consumer/verify
+ */
+export async function verifyConsumerMark(params: {
+  queryType: 'cml' | 'huid' | 'standard';
+  code: string;
+  language?: string;
+  signal?: AbortSignal;
+}): Promise<ConsumerVerificationResult> {
+  const url = `${getApiBaseUrl()}/api/consumer/verify?query_type=${encodeURIComponent(params.queryType)}&code=${encodeURIComponent(params.code)}&language=${encodeURIComponent(params.language || 'en')}`;
+  const res = await fetchWithTimeout(url, { signal: params.signal });
+  if (!res.ok) {
+    throw new Error(`Consumer verification failed with status ${res.status}`);
+  }
+  return res.json();
+}
+
+export interface DocumentScanResult {
+  document_id: string;
+  filename: string;
+  filesize: number;
+  status: 'Verified' | 'Discrepancy' | 'Failed';
+  confidence_score?: number;
+  summary: string;
+  checklist_matches?: string[];
+  discrepancies?: string[];
+  statutory_disclaimer: string;
+}
+
+/**
+ * Statutory Document Compliance AI Pre-Scan
+ * POST /api/documents/scan
+ */
+export async function scanDocumentCompliance(params: {
+  file: File;
+  documentId: string;
+  documentTitle: string;
+  standardId?: string;
+  sessionId?: string;
+  language?: string;
+  signal?: AbortSignal;
+}): Promise<DocumentScanResult> {
+  const formData = new FormData();
+  formData.append('file', params.file);
+  formData.append('document_id', params.documentId);
+  formData.append('document_title', params.documentTitle);
+  if (params.standardId) formData.append('standard_id', params.standardId);
+  if (params.sessionId) formData.append('session_id', params.sessionId);
+  formData.append('language', params.language || 'en');
+
+  const url = `${getApiBaseUrl()}/api/documents/scan`;
+  const res = await fetchWithTimeout(url, {
+    method: 'POST',
+    body: formData,
+    signal: params.signal,
+  });
+
+  if (!res.ok) {
+    const errorDetail = await res.text().catch(() => 'Document scan error');
+    throw new Error(`Document scan failed with status ${res.status}: ${errorDetail}`);
+  }
+  return res.json();
+}
+
+/**
+ * Chat History API: Load Persisted Messages
+ * GET /api/chat/history
+ */
+export async function getChatHistory(sessionId?: string, signal?: AbortSignal): Promise<{ user_id: string; history: any[] }> {
+  const url = sessionId ? `${getApiBaseUrl()}/api/chat/history?session_id=${encodeURIComponent(sessionId)}` : `${getApiBaseUrl()}/api/chat/history`;
+  const res = await fetchWithTimeout(url, { credentials: 'include', signal });
+  if (!res.ok) {
+    return { user_id: sessionId || 'anonymous', history: [] };
+  }
+  return res.json();
+}
+
+/**
+ * Chat History API: Clear Persisted Messages
+ * POST /api/chat/history/clear
+ */
+export async function clearChatHistory(sessionId?: string): Promise<void> {
+  const url = sessionId ? `${getApiBaseUrl()}/api/chat/history/clear?session_id=${encodeURIComponent(sessionId)}` : `${getApiBaseUrl()}/api/chat/history/clear`;
+  await fetchWithTimeout(url, { method: 'POST', credentials: 'include' });
+}
+
+/**
  * Check connectivity to FastAPI backend
  */
 export async function checkBackendHealth(): Promise<{ online: boolean; latencyMs: number }> {
   const start = performance.now();
   try {
-    const res = await fetch(`${getApiBaseUrl()}/docs`, {
-      method: 'HEAD',
+    const res = await fetchWithTimeout(`${getApiBaseUrl()}/api/status`, {
+      method: 'GET',
       cache: 'no-cache',
-      mode: 'no-cors',
-    });
+    }, 3000);
     const latency = Math.round(performance.now() - start);
-    return { online: true, latencyMs: latency };
+    return { online: res.ok, latencyMs: latency };
   } catch (e) {
     try {
-      await fetch(`${PROXY_BACKEND_URL}/docs`, { method: 'HEAD', cache: 'no-cache' });
-      return { online: true, latencyMs: Math.round(performance.now() - start) };
+      const res2 = await fetchWithTimeout(`${getApiBaseUrl()}/`, { method: 'GET', cache: 'no-cache' }, 3000);
+      return { online: res2.ok, latencyMs: Math.round(performance.now() - start) };
     } catch {
       return { online: false, latencyMs: 0 };
     }
   }
 }
+
+/**
+ * User Saved Product Guide Models & APIs (Issue 4 & 5)
+ */
+export interface SavedProductGuideItem {
+  id: string;
+  product_name: string;
+  standard_code?: string;
+  active_step: number;
+  query?: string;
+  product_profile: any;
+  guide_data: any;
+  updated_at: string;
+}
+
+export async function saveUserProductGuide(data: {
+  product_name: string;
+  standard_code?: string;
+  active_step?: number;
+  query?: string;
+  product_profile?: any;
+  guide_data?: any;
+}): Promise<{ success: boolean; id?: string; message?: string }> {
+  const res = await fetch(`${getApiBaseUrl()}/api/user/saved-guides`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: 'Failed to save guide' }));
+    throw new Error(err.detail || 'Failed to save product guide');
+  }
+  return res.json();
+}
+
+export async function getUserSavedGuides(): Promise<SavedProductGuideItem[]> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/user/saved-guides`, {
+      method: 'GET',
+      credentials: 'include',
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return data.saved_guides || [];
+  } catch {
+    return [];
+  }
+}
+
+export async function deleteUserSavedGuide(id: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${getApiBaseUrl()}/api/user/saved-guides/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Nearest Laboratories Recommendation API (Issue 6 & 7)
+ */
+export interface RecommendedLab {
+  id: number;
+  lab_name: string;
+  osl_code?: string;
+  address: string;
+  city: string;
+  state: string;
+  status: string;
+  source_url?: string;
+  testing_charge?: number;
+  currency: string;
+  remarks?: string;
+  proximity_tier: string;
+  tier_score: number;
+}
+
+export async function getRecommendedLaboratories(params: {
+  location?: string;
+  standard_id?: string;
+  lat?: number;
+  lng?: number;
+  signal?: AbortSignal;
+}): Promise<{
+  query_location: string;
+  detected_city?: string;
+  detected_state?: string;
+  total_laboratories: number;
+  laboratories: RecommendedLab[];
+}> {
+  const queryParams = new URLSearchParams();
+  if (params.location) queryParams.append('location', params.location);
+  if (params.standard_id) queryParams.append('standard_id', params.standard_id);
+  if (params.lat !== undefined) queryParams.append('lat', params.lat.toString());
+  if (params.lng !== undefined) queryParams.append('lng', params.lng.toString());
+
+  const url = `${getApiBaseUrl()}/api/labs/recommend?${queryParams.toString()}`;
+  const res = await fetchWithTimeout(url, { signal: params.signal }, 6000);
+  if (!res.ok) {
+    throw new Error('Failed to retrieve laboratory recommendations');
+  }
+  return res.json();
+}
+

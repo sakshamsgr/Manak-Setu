@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
@@ -19,23 +19,45 @@ import {
   Gem,
   Check,
   Copy,
-  X
+  X,
+  RefreshCw,
+  CheckCircle,
+  AlertTriangle
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { sendChatMessage, sendMultimodalMessage } from '../../services/api';
+import { sendChatMessage, sendMultimodalMessage, verifyConsumerMark, ConsumerVerificationResult } from '../../services/api';
 import { Citation } from '../../types/chat';
 import { CitationsEvidenceGrid } from '../chat/CitationEvidenceCard';
 
 export const HallmarkingView: React.FC = () => {
   const { t, language } = useLanguage();
+  
+  // HUID Verifier State
+  const [huidCode, setHuidCode] = useState('');
+  const [huidLoading, setHuidLoading] = useState(false);
+  const [huidResult, setHuidResult] = useState<ConsumerVerificationResult | null>(null);
+  const [huidError, setHuidError] = useState<string | null>(null);
+
+  // Chat State
   const [query, setQuery] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [history, setHistory] = useState<Array<{ role: 'user' | 'assistant'; text: string; citations?: Citation[]; filename?: string }>>([]);
   const [sessionId] = useState(() => `hallmarking_${Date.now()}`);
   const [copiedIdx, setCopiedIdx] = useState<number | null>(null);
+  const [lastQuery, setLastQuery] = useState<{ text: string; file?: File } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const huidAbortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+      if (huidAbortRef.current) huidAbortRef.current.abort();
+    };
+  }, []);
 
   const purityGrades = [
     { carat: '24K (999)', purity: '99.9% Fine Gold', use: 'Gold coins, bullion, high-purity bars' },
@@ -54,25 +76,64 @@ export const HallmarkingView: React.FC = () => {
     'How does a retail jeweller register on Manakonline for hallmarking licence?',
   ];
 
+  const handleVerifyHuid = async (codeToUse?: string) => {
+    const code = (codeToUse || huidCode).trim();
+    if (!code || huidLoading) return;
+
+    if (huidAbortRef.current) {
+      huidAbortRef.current.abort();
+    }
+    const controller = new AbortController();
+    huidAbortRef.current = controller;
+
+    setHuidLoading(true);
+    setHuidError(null);
+    setHuidResult(null);
+
+    try {
+      const res = await verifyConsumerMark({
+        queryType: 'huid',
+        code,
+        language,
+        signal: controller.signal,
+      });
+      setHuidResult(res);
+    } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      setHuidError(err.message || t('common.apiUnavailable') || 'Failed to verify HUID format.');
+    } finally {
+      setHuidLoading(false);
+      huidAbortRef.current = null;
+    }
+  };
+
   const handleAsk = async (textToSubmit?: string) => {
     const q = (textToSubmit || query).trim();
     if ((!q && !selectedFile) || isLoading) return;
 
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     const file = selectedFile || undefined;
     const userDisplay = q || (file ? `Uploaded ${file.name} for hallmarking analysis` : '');
 
+    setLastQuery({ text: q, file });
     setHistory((prev) => [...prev, { role: 'user', text: userDisplay, filename: file?.name }]);
     setQuery('');
     setSelectedFile(null);
+    setErrorMessage(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
     setIsLoading(true);
 
     try {
       let res;
       if (file) {
-        res = await sendMultimodalMessage(sessionId, q, file, language);
+        res = await sendMultimodalMessage(sessionId, q, file, language, controller.signal);
       } else {
-        res = await sendChatMessage(sessionId, q, language);
+        res = await sendChatMessage(sessionId, q, language, { tab: 'consumer', subtab: 'hallmarking' }, controller.signal);
       }
 
       setHistory((prev) => [
@@ -84,15 +145,29 @@ export const HallmarkingView: React.FC = () => {
         },
       ]);
     } catch (err: any) {
+      if (err.name === 'AbortError') return;
+      const isTimeout = err.name === 'ApiTimeoutError' || err.isTimeout || err.message?.includes('timeout');
+      const errText = isTimeout
+        ? (t('common.aiTimeout') || 'Hallmarking inquiry is taking longer than expected. Please retry.')
+        : (t('common.apiUnavailable') || 'Unable to retrieve hallmarking standard answer. Please try again.');
+
+      setErrorMessage(errText);
       setHistory((prev) => [
         ...prev,
         {
           role: 'assistant',
-          text: `?? **Notice**: ${err.message || 'Unable to retrieve hallmarking standard answer.'}`,
+          text: `⚠️ **${errText}**`,
         },
       ]);
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleRetryLast = () => {
+    if (lastQuery) {
+      handleAsk(lastQuery.text);
     }
   };
 
@@ -103,7 +178,7 @@ export const HallmarkingView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8 animate-fade-in">
+    <div className="space-y-8 animate-fade-in">
       {/* Header Banner */}
       <div className="p-6 sm:p-10 rounded-3xl bg-gradient-to-r from-amber-950 via-slate-900 to-bis-950 text-white shadow-md space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -116,7 +191,7 @@ export const HallmarkingView: React.FC = () => {
             href="https://www.manakonline.in"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-colors"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-colors"
           >
             <span>Jeweller Portal (e-BIS)</span>
             <ExternalLink className="w-3.5 h-3.5" />
@@ -125,10 +200,10 @@ export const HallmarkingView: React.FC = () => {
 
         <div className="space-y-2 max-w-3xl">
           <h1 className="text-2xl sm:text-4xl font-extrabold tracking-tight text-white">
-            {t('hallmarking.title')}
+            {t('hallmarking.title') || 'BIS Hallmarking of Gold & Silver Artefacts'}
           </h1>
           <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
-            {t('hallmarking.subtitle')} Hallmarking protects consumers against adulteration and obligates manufacturers and jewellers to maintain statutory fineness standards.
+            {t('hallmarking.subtitle') || 'Official purity certification and Hallmark Unique Identification (HUID) system under the BIS Act 2016.'} Hallmarking protects consumers against adulteration and obligates manufacturers and jewellers to maintain statutory fineness standards.
           </p>
         </div>
       </div>
@@ -147,7 +222,7 @@ export const HallmarkingView: React.FC = () => {
             </div>
             <h3 className="text-sm font-bold text-slate-900">BIS Standard Logo (Triangle)</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Official triangular BIS mark certifying that the metal has been assayed and certified in an authorized AHC.
+              Official triangular BIS mark certifying that the precious metal has been assayed and certified in an authorized AHC.
             </p>
           </div>
 
@@ -167,10 +242,110 @@ export const HallmarkingView: React.FC = () => {
             </div>
             <h3 className="text-sm font-bold text-slate-900">6-Digit Alphanumeric HUID Code</h3>
             <p className="text-xs text-slate-600 leading-relaxed">
-              Hallmark Unique Identification code laser-engraved on every single jewellery piece for end-to-end traceability.
+              Hallmark Unique Identification code laser-engraved on every single jewellery piece for complete end-to-end traceability.
             </p>
           </div>
         </div>
+      </div>
+
+      {/* Interactive HUID Code Checker Tool */}
+      <div className="p-6 sm:p-8 rounded-3xl bg-white border border-amber-200/80 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-100 pb-3">
+          <div>
+            <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-amber-600" />
+              <span>Interactive 6-Digit HUID Code Verifier</span>
+            </h3>
+            <p className="text-xs text-slate-500">
+              Check your jewellery's 6-character laser-engraved code for statutory compliance.
+            </p>
+          </div>
+
+          <a
+            href="https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-xs font-bold text-amber-700 hover:text-amber-900 flex items-center gap-1 self-start sm:self-center"
+          >
+            <span>Open in BIS Care App</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-amber-500 absolute left-3.5 top-3.5" />
+            <input
+              type="text"
+              value={huidCode}
+              onChange={(e) => setHuidCode(e.target.value.toUpperCase())}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyHuid(); }}
+              placeholder="Enter 6-digit alphanumeric HUID (e.g. A1B2C3)"
+              maxLength={6}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-amber-200 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-xs sm:text-sm font-mono font-bold tracking-widest uppercase transition-all shadow-xs"
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleVerifyHuid()}
+            disabled={!huidCode.trim() || huidLoading}
+            className="px-6 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition-all disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+          >
+            {huidLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin text-white" />
+                <span>Checking...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle className="w-4 h-4" />
+                <span>Verify HUID Code</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Quick sample chips */}
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span className="text-[11px] font-semibold">Test Sample:</span>
+          <button
+            type="button"
+            onClick={() => { setHuidCode('A1B2C3'); handleVerifyHuid('A1B2C3'); }}
+            className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 font-mono text-[11px] font-bold border border-amber-200"
+          >
+            A1B2C3
+          </button>
+        </div>
+
+        {/* HUID Result */}
+        {huidResult && (
+          <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3 animate-slide-up text-xs">
+            <div className="flex items-center justify-between">
+              <span className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold uppercase ${
+                huidResult.valid_format !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+              }`}>
+                {huidResult.valid_format !== false ? 'Valid HUID Format' : 'Invalid HUID Format'}
+              </span>
+              <span className="font-mono font-bold text-amber-950">{huidResult.title}</span>
+            </div>
+            <p className="text-amber-900 leading-relaxed">{huidResult.description}</p>
+            {huidResult.verification_steps && (
+              <ol className="list-decimal pl-5 space-y-1 text-amber-950 text-[11px]">
+                {huidResult.verification_steps.map((s, idx) => (
+                  <li key={idx}>{s}</li>
+                ))}
+              </ol>
+            )}
+          </div>
+        )}
+
+        {huidError && (
+          <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <span>{huidError}</span>
+          </div>
+        )}
       </div>
 
       {/* Gold Purity Standards Table */}
@@ -201,7 +376,7 @@ export const HallmarkingView: React.FC = () => {
       </div>
 
       {/* Hallmarking Dedicated AI Assistant */}
-      <div className="p-6 sm:p-8 rounded-3xl bg-white border-2 border-slate-200 shadow-card space-y-5">
+      <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-card space-y-5">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="p-2 rounded-xl bg-amber-100 text-amber-900">
@@ -217,7 +392,7 @@ export const HallmarkingView: React.FC = () => {
             </div>
           </div>
           <span className="text-[10px] font-extrabold uppercase bg-amber-100 text-amber-900 px-2.5 py-1 rounded-full border border-amber-300">
-            Source-Backed RAG
+            Official Standard Citations
           </span>
         </div>
 
@@ -287,9 +462,27 @@ export const HallmarkingView: React.FC = () => {
             {isLoading && (
               <div className="flex items-center gap-2 text-xs text-amber-900 p-2 font-medium bg-amber-50 rounded-xl">
                 <Loader2 className="w-4 h-4 animate-spin text-amber-600" />
-                <span>Retrieving official Hallmarking documentation from vector database...</span>
+                <span>Retrieving official BIS Hallmarking documentation...</span>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Error Banner with Retry (Rule 8 & 9) */}
+        {errorMessage && (
+          <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="font-semibold">{errorMessage}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleRetryLast}
+              className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold flex items-center gap-1 transition-colors shrink-0"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>{t('common.retry') || 'Retry'}</span>
+            </button>
           </div>
         )}
 
@@ -305,7 +498,7 @@ export const HallmarkingView: React.FC = () => {
                 setSelectedFile(null);
                 if (fileInputRef.current) fileInputRef.current.value = '';
               }}
-              className="p-1 hover:bg-amber-200 rounded text-amber-800"
+              className="p-1 hover:bg-amber-200 rounded text-amber-900"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -318,7 +511,7 @@ export const HallmarkingView: React.FC = () => {
             e.preventDefault();
             handleAsk();
           }}
-          className="flex items-center gap-2 bg-slate-50 border border-slate-300 focus-within:border-amber-500 focus-within:ring-2 focus-within:ring-amber-100 rounded-2xl p-2 transition-all shadow-inner"
+          className="flex items-center gap-2 bg-slate-50 border border-slate-300 focus-within:border-amber-600 focus-within:ring-2 focus-within:ring-amber-100 rounded-2xl p-2 transition-all shadow-inner"
         >
           <input
             ref={fileInputRef}
@@ -335,7 +528,7 @@ export const HallmarkingView: React.FC = () => {
             type="button"
             onClick={() => fileInputRef.current?.click()}
             className="p-2 rounded-xl hover:bg-slate-200 text-slate-500 hover:text-amber-900 transition-colors"
-            title="Upload hallmark photograph or jewellery certificate PDF"
+            title="Upload hallmark photo or jewellery bill"
           >
             <Paperclip className="w-4 h-4 text-amber-700" />
           </button>
@@ -344,7 +537,7 @@ export const HallmarkingView: React.FC = () => {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={t('hallmarking.searchPlaceholder')}
+            placeholder={t('hallmarking.searchPlaceholder') || 'Ask any hallmarking question (e.g. 3 mandatory marks, how to verify HUID)...'}
             disabled={isLoading}
             className="flex-1 bg-transparent border-0 focus:ring-0 focus:outline-none text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 px-2 py-1"
           />
@@ -354,13 +547,13 @@ export const HallmarkingView: React.FC = () => {
             disabled={(!query.trim() && !selectedFile) || isLoading}
             className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-1.5 transition-all shadow-xs shrink-0 ${
               (query.trim() || selectedFile) && !isLoading
-                ? 'bg-amber-600 hover:bg-amber-500 text-white'
+                ? 'bg-amber-600 hover:bg-amber-700 text-white'
                 : 'bg-slate-200 text-slate-400 cursor-not-allowed'
             }`}
           >
             {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : (
               <>
-                <span>{t('hallmarking.askBtn')}</span>
+                <span>{t('hallmarking.askBtn') || 'Ask Assistant'}</span>
                 <Send className="w-3.5 h-3.5" />
               </>
             )}
