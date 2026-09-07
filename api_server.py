@@ -843,7 +843,9 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
         bis_row = cur.fetchone()
         if bis_row:
             text_standard_id, _, pdf_url = bis_row
-    else:
+
+    # Notice the "else:" is completely removed!
+    if not text_standard_id:
         # C. Fallback search bis_standards directly
         cur.execute("""
             SELECT id, title, pdf_url FROM bis_standards 
