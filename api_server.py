@@ -1073,7 +1073,7 @@ async def get_testing_and_labs(standard_id: str):
     cur.execute("""
         SELECT clause, requirement, test_method, equipment_requirement, sample_quantity, frequency, testing_type, remarks, source_page
         FROM standard_tests
-        WHERE standard_id = %s OR standard_id ILIKE '%%368%%'
+        WHERE standard_id = %s
         ORDER BY id ASC;
     """, (text_id,))
     test_rows = cur.fetchall()
@@ -1102,7 +1102,7 @@ async def get_testing_and_labs(standard_id: str):
         SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, c.testing_charge, c.currency, c.remarks, l.status
         FROM lab_test_charges c
         JOIN laboratories l ON c.laboratory_id = l.id
-        WHERE c.standard_id = %s OR c.standard_id ILIKE '%%368%%';
+        WHERE c.standard_id = %s;
     """, (text_id,))
     lab_rows = cur.fetchall()
     labs = []
@@ -1125,7 +1125,7 @@ async def get_testing_and_labs(standard_id: str):
     cur.execute("""
         SELECT group_code, group_name, condition, sample_requirement, preferred_sample, voltage_requirement, remarks, source_page
         FROM grouping_rules
-        WHERE standard_id = %s OR standard_id ILIKE '%%368%%';
+        WHERE standard_id = %s;
     """, (text_id,))
     group_rows = cur.fetchall()
     groups = []
@@ -1158,7 +1158,7 @@ async def get_standard_documents(standard_id: str):
     cur.execute("""
         SELECT id, document_name, description, required_status, applicable_when, responsible_party, source_url
         FROM application_documents
-        WHERE standard_id = %s OR standard_id ILIKE '%%368%%'
+        WHERE standard_id = %s
         ORDER BY id ASC;
     """, (standard_id,))
     rows = cur.fetchall()
