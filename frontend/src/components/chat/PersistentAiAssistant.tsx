@@ -82,6 +82,9 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
     return window.innerWidth < 640;
   });
 
+  // Floating Bubble state
+  const [showBubble, setShowBubble] = useState(false);
+
   // Resizable dimensions (width & height)
   const [size, setSize] = useState<{ width: number; height: number }>(() => {
     if (typeof window === 'undefined') return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
@@ -115,6 +118,21 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
 
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+
+  // 15-second timer for the floating "Ask with me" bubble
+  useEffect(() => {
+    if (isOpen) {
+      setShowBubble(false);
+      return;
+    }
+    const interval = setInterval(() => {
+      setShowBubble(true);
+      // Hide the bubble after 4 seconds
+      setTimeout(() => setShowBubble(false), 4000);
+    }, 15000); // Trigger every 15 seconds
+
+    return () => clearInterval(interval);
+  }, [isOpen]);
 
   // Close on Escape key press
   useEffect(() => {
@@ -422,31 +440,49 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
   return (
     <>
       {/* 1. Permanent Floating "✨ Ask Manak Setu AI" Control (Lower-Right Corner) */}
-      <div className="fixed bottom-6 right-6 z-40 flex items-center gap-2 select-none print:hidden">
-        <button
-          onClick={onToggle}
-          aria-label={isOpen ? t('assistant.close') || 'Close Assistant' : '✨ Ask Manak Setu AI'}
-          className={`group relative flex items-center justify-center rounded-full shadow-xl transition-all duration-300 transform active:scale-95 cursor-pointer ${
-            isOpen
-              ? 'w-11 h-11 bg-slate-900 text-slate-300 border-2 border-slate-700 hover:bg-slate-800 hover:text-white'
-              : 'px-4 py-2.5 bg-gradient-to-r from-bis-900 via-bis-850 to-slate-900 text-white border border-amber-400/80 shadow-bis-950/30 hover:shadow-bis-900/40 hover:border-amber-400'
-          }`}
-          title={isOpen ? t('assistant.close') || 'Close Assistant' : '✨ Ask Manak Setu AI'}
-        >
-          {isOpen ? (
-            <X className="w-5 h-5 transition-transform group-hover:rotate-90" />
-          ) : (
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-xs tracking-wide text-amber-300 font-sans">
-                ✨ Ask Manak Setu AI
-              </span>
-              <span className="flex h-2 w-2 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-              </span>
-            </div>
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-2 select-none print:hidden">
+        
+        {/* 15-second Notification Bubble */}
+        {!isOpen && showBubble && (
+          <div className="relative animate-bounce bg-white text-bis-900 px-4 py-2 rounded-2xl shadow-xl border border-slate-200 font-bold text-sm mr-2 mb-1 z-50">
+            Ask with me! ✨
+            {/* Small triangle pointing down to the button */}
+            <div className="absolute -bottom-2 right-8 w-0 h-0 border-l-[6px] border-l-transparent border-t-[8px] border-t-white border-r-[6px] border-r-transparent filter drop-shadow-md"></div>
+          </div>
+        )}
+
+        {/* Floating Button Container */}
+        <div className="relative group">
+          {/* Glowing Colorful Background (Shows on Hover) */}
+          {!isOpen && (
+            <div className="absolute -inset-1 bg-gradient-to-r from-amber-400 via-emerald-400 to-blue-500 rounded-full blur-md opacity-0 group-hover:opacity-70 transition duration-500 pointer-events-none"></div>
           )}
-        </button>
+
+          <button
+            onClick={onToggle}
+            aria-label={isOpen ? t('assistant.close') || 'Close Assistant' : '✨ Ask Manak Setu AI'}
+            className={`relative flex items-center justify-center rounded-full shadow-xl transition-all duration-300 transform active:scale-95 cursor-pointer ${
+              isOpen
+                ? 'w-11 h-11 bg-slate-900 text-slate-300 border-2 border-slate-700 hover:bg-slate-800 hover:text-white'
+                : 'px-6 py-3.5 bg-gradient-to-r from-bis-900 via-bis-850 to-slate-900 text-white border-2 border-amber-400/80 shadow-bis-950/30 hover:-translate-y-1 hover:scale-105'
+            }`}
+            title={isOpen ? t('assistant.close') || 'Close Assistant' : '✨ Ask Manak Setu AI'}
+          >
+            {isOpen ? (
+              <X className="w-5 h-5 transition-transform group-hover:rotate-90" />
+            ) : (
+              <div className="flex items-center gap-2">
+                <span className="font-extrabold text-sm tracking-wide text-amber-300 font-sans">
+                  ✨ Ask Manak Setu AI
+                </span>
+                <span className="flex h-2.5 w-2.5 relative">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+                </span>
+              </div>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Backdrop Overlay */}
