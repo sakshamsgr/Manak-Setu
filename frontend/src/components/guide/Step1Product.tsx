@@ -1,7 +1,8 @@
 import React from 'react';
-import { Package, Building2, ArrowRight } from 'lucide-react';
+import { Package, Building2, ArrowRight, Lock } from 'lucide-react';
 import { ProductProfile } from '../../types/compliance';
 import { useLanguage } from '../../context/LanguageContext';
+import { useProductContext } from '../../context/ProductContext';
 
 interface Step1ProductProps {
   productProfile: ProductProfile;
@@ -16,6 +17,10 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
   onNext,
 }) => {
   const { t } = useLanguage();
+  
+  // Fetch guideData to determine if the session is locked
+  const { guideData } = useProductContext();
+  const isLocked = !!guideData; // If guideData exists, they already submitted a search
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -25,12 +30,27 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
           Stage 1 of 6
         </span>
         <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-          {t('s1Title')}
+          {t('s1Title') || "Product Profile"}
         </h2>
         <p className="text-xs sm:text-sm text-slate-500">
-          {t('s1Subtitle')}
+          {t('s1Subtitle') || "Provide your product details to generate a compliance roadmap."}
         </p>
       </div>
+
+      {/* Lock Notification Banner */}
+      {isLocked && (
+        <div className="bg-slate-100 border border-slate-200 rounded-xl p-3 flex items-center gap-3">
+          <div className="p-1.5 bg-slate-200 rounded-lg text-slate-500">
+            <Lock className="w-4 h-4" />
+          </div>
+          <div>
+            <p className="text-xs font-bold text-slate-700">Product Profile Locked</p>
+            <p className="text-[11px] text-slate-500">
+              This session is locked to the current product to maintain data accuracy. To explore a different product, click "New Product Search" above.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Interactive Product Parameters Form Card */}
       <form
@@ -46,25 +66,31 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
             <div className="space-y-1.5">
               <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <Package className="w-3.5 h-3.5 text-bis-700" />
-                <span>{t('s1ProductName')}</span>
+                <span>{t('s1ProductName') || "Product Name"}</span>
               </label>
               <input
                 type="text"
+                disabled={isLocked}
                 value={productProfile.name}
                 onChange={(e) => onUpdateProfile({ name: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                className={`w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold transition-all shadow-xs ${
+                  isLocked ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500"
+                }`}
               />
             </div>
 
             {/* Product Industry Category */}
             <div className="space-y-1.5">
               <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider">
-                {t('s1Category')}
+                {t('s1Category') || "Category"}
               </label>
               <select
+                disabled={isLocked}
                 value={productProfile.category}
                 onChange={(e) => onUpdateProfile({ category: e.target.value })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                className={`w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold transition-all shadow-xs ${
+                  isLocked ? "bg-slate-100 text-slate-500 cursor-not-allowed appearance-none" : "bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500"
+                }`}
               >
                 <option value="Electrical & Electronics">Electrical & Electronics</option>
                 <option value="Food & Agriculture">Food & Agriculture</option>
@@ -80,20 +106,23 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
               <label className="block text-xs font-extrabold text-slate-700 uppercase tracking-wider flex items-center justify-between">
                 <span className="flex items-center gap-1.5">
                   <Building2 className="w-3.5 h-3.5 text-amber-600" />
-                  <span>{t('s1Scale')}</span>
+                  <span>{t('s1Scale') || "Scale"}</span>
                 </span>
                 <span className="text-amber-700 font-bold text-[11px]">50% Udyam Subsidy</span>
               </label>
               <select
+                disabled={isLocked}
                 value={productProfile.industryScale}
                 onChange={(e) => onUpdateProfile({ industryScale: e.target.value as any })}
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                className={`w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold transition-all shadow-xs ${
+                  isLocked ? "bg-slate-100 text-slate-500 cursor-not-allowed appearance-none" : "bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500"
+                }`}
               >
-                <option value="micro">{t('s1MicroScale')}</option>
-                <option value="startup">{t('s1StartupScale')}</option>
-                <option value="small">{t('s1SmallScale')}</option>
-                <option value="medium">{t('s1MediumScale')}</option>
-                <option value="large">{t('s1LargeScale')}</option>
+                <option value="micro">{t('s1MicroScale') || "Micro"}</option>
+                <option value="startup">{t('s1StartupScale') || "Startup"}</option>
+                <option value="small">{t('s1SmallScale') || "Small"}</option>
+                <option value="medium">{t('s1MediumScale') || "Medium"}</option>
+                <option value="large">{t('s1LargeScale') || "Large"}</option>
               </select>
             </div>
 
@@ -105,10 +134,13 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
               </label>
               <input
                 type="text"
+                disabled={isLocked}
                 value={productProfile.subType || ''}
                 onChange={(e) => onUpdateProfile({ subType: e.target.value, intendedUse: e.target.value })}
                 placeholder="e.g. Immersion Water Heater, Portable, Class I"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                className={`w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold transition-all shadow-xs ${
+                  isLocked ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500"
+                }`}
               />
             </div>
 
@@ -119,36 +151,41 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
               </label>
               <input
                 type="text"
+                disabled={isLocked}
                 value={productProfile.technicalSpecs || ''}
                 onChange={(e) => onUpdateProfile({ technicalSpecs: e.target.value })}
                 placeholder="e.g. 230V AC, 1500W, Copper Sheathed Tubular Heating Element"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+                className={`w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold transition-all shadow-xs ${
+                  isLocked ? "bg-slate-100 text-slate-500 cursor-not-allowed" : "bg-slate-50 text-slate-900 focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500"
+                }`}
               />
             </div>
           </div>
 
           {/* Domestic vs Foreign Toggle */}
           <div className="pt-3 border-t border-slate-100 flex items-center gap-6">
-            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+            <label className={`flex items-center gap-2 text-xs font-semibold text-slate-700 ${isLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
               <input
                 type="radio"
                 name="origin"
+                disabled={isLocked}
                 checked={!productProfile.isForeign}
                 onChange={() => onUpdateProfile({ isForeign: false })}
-                className="text-bis-800 focus:ring-bis-500"
+                className="text-bis-800 focus:ring-bis-500 disabled:bg-slate-200"
               />
-              <span>{t('s1Domestic')}</span>
+              <span>{t('s1Domestic') || "Domestic"}</span>
             </label>
 
-            <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
+            <label className={`flex items-center gap-2 text-xs font-semibold text-slate-700 ${isLocked ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}>
               <input
                 type="radio"
                 name="origin"
+                disabled={isLocked}
                 checked={productProfile.isForeign}
                 onChange={() => onUpdateProfile({ isForeign: true })}
-                className="text-bis-800 focus:ring-bis-500"
+                className="text-bis-800 focus:ring-bis-500 disabled:bg-slate-200"
               />
-              <span>{t('s1Foreign')}</span>
+              <span>{t('s1Foreign') || "Foreign"}</span>
             </label>
           </div>
         </div>
@@ -159,7 +196,7 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
             type="submit"
             className="px-6 py-3 rounded-xl bg-bis-900 hover:bg-bis-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md hover:shadow transition-all transform active:scale-95 cursor-pointer"
           >
-            <span>{t('s1ContinueBtn')}</span>
+            <span>{isLocked ? "Proceed to Next Step" : t('s1ContinueBtn')}</span>
             <ArrowRight className="w-4 h-4 text-amber-400" />
           </button>
         </div>

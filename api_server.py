@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 if hasattr(sys.stderr, "reconfigure"):
@@ -53,6 +54,23 @@ def get_db():
 
 # In-memory session store fallback
 chat_sessions = {}
+
+# --- NEW: Core Regex Extractors to Fix Substring Database Bleed ---
+def extract_core_id(std_id: str):
+    if not std_id:
+        return "", ""
+    match = re.search(r'(\d+(?:[-_]\d+)*)', std_id)
+    if match:
+        core = match.group(1)
+        return core.replace('_', '-'), core.replace('-', '_')
+    return std_id, std_id
+
+def get_core_regex(core_id: str) -> str:
+    if not core_id: 
+        return "^$"
+    pattern = core_id.replace('-', '[-_]').replace('_', '[-_]')
+    return f"(^|[^0-9]){pattern}([^0-9]|$)"
+# -----------------------------------------------------------------
 
 def get_chat_history_from_db(user_id: str) -> list:
     conn = None
@@ -838,13 +856,15 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
         standard_title = s_title
         cert_type = cert_type_val or "Mandatory"
         group_name = g_name or group_name
-        clean_num = s_num.replace("IS", "").split(":")[0].strip()
-        cur.execute("SELECT id, title, pdf_url FROM bis_standards WHERE id ILIKE %s LIMIT 1;", (f"%{clean_num}%",))
+        
+        # FIX: Robust matching
+        core_hyphen, core_under = extract_core_id(s_num)
+        
+        cur.execute("SELECT id, title, pdf_url FROM bis_standards WHERE id ILIKE %s OR id ILIKE %s LIMIT 1;", (f"%{core_hyphen}%", f"%{core_under}%"))
         bis_row = cur.fetchone()
         if bis_row:
             text_standard_id, _, pdf_url = bis_row
 
-    # Notice the "else:" is completely removed!
     if not text_standard_id:
         # C. Fallback search bis_standards directly
         cur.execute("""
@@ -888,15 +908,17 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
             "message": msg
         }
 
-    # Fetch QCO details if available
-    clean_code = standard_number.replace("IS", "").split(":")[0].strip()
+    # Fetch QCO details using bulletproof regex extraction
+    core_hyphen, _ = extract_core_id(standard_number)
+    regex_pattern = get_core_regex(core_hyphen)
+    
     cur.execute("""
         SELECT q.qco_name, q.notification_number, q.authority, q.notification_date, q.effective_date,
                qs.implementation_general, qs.implementation_small, qs.implementation_micro
         FROM qco_standards qs
         JOIN qcos q ON qs.qco_id = q.id
-        WHERE qs.standard_id = %s OR qs.standard_id ILIKE %s LIMIT 1;
-    """, (text_standard_id, f"%{clean_code}%"))
+        WHERE qs.standard_id = %s OR qs.standard_id ~* %s LIMIT 1;
+    """, (text_standard_id, regex_pattern))
     qco_row = cur.fetchone()
 
     # Fetch related standards from bis_standards
@@ -1064,17 +1086,24 @@ async def get_testing_and_labs(standard_id: str):
     conn = get_db()
     cur = conn.cursor()
     
-    cur.execute("SELECT id FROM bis_standards WHERE id = %s OR id ILIKE %s LIMIT 1;", (standard_id, f"%{standard_id[:6]}%"))
+    # Generate clean regex pattern for robust downstream fetching
+    core_hyphen, _ = extract_core_id(standard_id)
+    regex_pattern = get_core_regex(core_hyphen)
+    
+    cur.execute("SELECT id FROM bis_standards WHERE id = %s OR id ~* %s LIMIT 1;", (standard_id, regex_pattern))
     matched = cur.fetchone()
     text_id = matched[0] if matched else standard_id
+    
+    core_h, _ = extract_core_id(text_id)
+    regex_pattern_downstream = get_core_regex(core_h)
 
     # Fetch tests
     cur.execute("""
         SELECT clause, requirement, test_method, equipment_requirement, sample_quantity, frequency, testing_type, remarks, source_page
         FROM standard_tests
-        WHERE standard_id = %s
+        WHERE standard_id = %s OR standard_id ~* %s
         ORDER BY id ASC;
-    """, (text_id,))
+    """, (text_id, regex_pattern_downstream))
     test_rows = cur.fetchall()
     
     routine_tests = []
@@ -1101,8 +1130,8 @@ async def get_testing_and_labs(standard_id: str):
         SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, c.testing_charge, c.currency, c.remarks, l.status
         FROM lab_test_charges c
         JOIN laboratories l ON c.laboratory_id = l.id
-        WHERE c.standard_id = %s;
-    """, (text_id,))
+        WHERE c.standard_id = %s OR c.standard_id ~* %s;
+    """, (text_id, regex_pattern_downstream))
     lab_rows = cur.fetchall()
     labs = []
     for lr in lab_rows:
@@ -1124,8 +1153,8 @@ async def get_testing_and_labs(standard_id: str):
     cur.execute("""
         SELECT group_code, group_name, condition, sample_requirement, preferred_sample, voltage_requirement, remarks, source_page
         FROM grouping_rules
-        WHERE standard_id = %s;
-    """, (text_id,))
+        WHERE standard_id = %s OR standard_id ~* %s;
+    """, (text_id, regex_pattern_downstream))
     group_rows = cur.fetchall()
     groups = []
     for gr in group_rows:
@@ -1154,12 +1183,15 @@ async def get_testing_and_labs(standard_id: str):
 async def get_standard_documents(standard_id: str):
     conn = get_db()
     cur = conn.cursor()
+    core_h, _ = extract_core_id(standard_id)
+    regex_pattern = get_core_regex(core_h)
+    
     cur.execute("""
         SELECT id, document_name, description, required_status, applicable_when, responsible_party, source_url
         FROM application_documents
-        WHERE standard_id = %s
+        WHERE standard_id = %s OR standard_id ~* %s
         ORDER BY id ASC;
-    """, (standard_id,))
+    """, (standard_id, regex_pattern))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -1299,12 +1331,15 @@ async def scan_document_endpoint(
 async def get_standard_process(standard_id: str):
     conn = get_db()
     cur = conn.cursor()
+    core_h, _ = extract_core_id(standard_id)
+    regex_pattern = get_core_regex(core_h)
+
     cur.execute("""
         SELECT step_number, step_name, description, responsible_party, fee_type, fee_amount, source_url
         FROM certification_process_steps
-        WHERE standard_id = %s
+        WHERE standard_id = %s OR standard_id ~* %s
         ORDER BY step_number ASC;
-    """, (standard_id,))
+    """, (standard_id, regex_pattern))
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -1337,7 +1372,11 @@ async def calculate_fees(req: EstimatorCalculateRequest):
     cur.execute("SELECT fee_type, amount, unit, applicable_to, notes FROM bis_fees WHERE scheme = %s;", (req.scheme,))
     fee_rows = cur.fetchall()
 
-    cur.execute("SELECT AVG(testing_charge) FROM lab_test_charges WHERE standard_id = %s;", (req.standard_id,))
+    core_h, _ = extract_core_id(req.standard_id)
+    regex_pattern = get_core_regex(core_h)
+    
+    cur.execute("SELECT AVG(testing_charge) FROM lab_test_charges WHERE standard_id = %s OR standard_id ~* %s;", 
+                (req.standard_id, regex_pattern))
     avg_lab_charge = cur.fetchone()[0] or 6000
     cur.close()
     conn.close()
@@ -1542,13 +1581,15 @@ async def verify_consumer_mark(
         
         qco_info = None
         if row:
+            core_h, _ = extract_core_id(row[0])
+            regex_pattern = get_core_regex(core_h)
             cur.execute("""
                 SELECT q.qco_name, q.notification_number, q.effective_date 
                 FROM qco_standards qs
                 JOIN qcos q ON qs.qco_id = q.id
-                WHERE qs.standard_id = %s
+                WHERE qs.standard_id = %s OR qs.standard_id ~* %s
                 LIMIT 1;
-            """, (row[0],))
+            """, (row[0], regex_pattern))
             qco_row = cur.fetchone()
             if qco_row:
                 qco_info = {
@@ -1742,13 +1783,16 @@ async def recommend_laboratories(
     cur = conn.cursor()
     try:
         text_id = (standard_id or "368").strip()
+        core_h, _ = extract_core_id(text_id)
+        regex_pattern = get_core_regex(core_h)
+
         cur.execute("""
             SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
        c.testing_charge, c.currency, c.remarks, c.grade_type_size
             FROM laboratories l
-            LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s)
+            LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s OR c.standard_id ~* %s)
             ORDER BY l.id;
-        """, (text_id,))
+        """, (text_id, regex_pattern))
         rows = cur.fetchall()
 
         matched_labs = {}
