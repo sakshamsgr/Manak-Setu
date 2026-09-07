@@ -15,7 +15,11 @@ import {
   X,
   Loader2,
   AlertCircle,
-  Check
+  Phone,
+  Mail,
+  Globe,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { TestingDetails, LabItem } from '../../types/compliance';
 import { useLanguage } from '../../context/LanguageContext';
@@ -40,7 +44,10 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
   const { guideData } = useProductContext();
   const [activeTab, setActiveTab] = useState<'routine' | 'type' | 'labs' | 'grouping'>('routine');
 
-  // Location & Lab recommendation states (Issue 6 & Issue 7)
+  // Track which laboratory's contact info is currently expanded
+  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
+
+  // Location & Lab recommendation states
   const [userLocation, setUserLocation] = useState<string>(() => {
     return sessionStorage.getItem('bis_user_location') || '';
   });
@@ -57,7 +64,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [isLoadingLabs, setIsLoadingLabs] = useState<boolean>(false);
   const [geoError, setGeoError] = useState<string | null>(null);
-  const [recommendedLabs, setRecommendedLabs] = useState<RecommendedLab[] | null>(null);
+  const [recommendedLabs, setRecommendedLabs] = useState<any[] | null>(null);
   const [activeLocationLabel, setActiveLocationLabel] = useState<string>(() => {
     return sessionStorage.getItem('bis_user_location') || '';
   });
@@ -155,7 +162,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
     }
   };
 
-  // Convert recommendedLabs or fallback to baseLabs
+  // Convert recommendedLabs or fallback to baseLabs and map new contact fields safely
   const displayedLabs = (recommendedLabs && recommendedLabs.length > 0)
     ? recommendedLabs.map(rl => ({
         id: rl.id,
@@ -171,31 +178,46 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
         sourceUrl: rl.source_url,
         remarks: rl.remarks,
         proximityTier: rl.proximity_tier || 'National BIS Network',
+        pincode: rl.pincode,
+        email: rl.contact_email,
+        phone: rl.contact_phone,
+        website: rl.website,
+        lat: rl.latitude,
+        lng: rl.longitude,
       }))
-    : baseLabs.map(l => ({
+    : baseLabs.map((l: any) => ({
         ...l,
         status: 'Recognized (Valid)',
         testingScopes: undefined,
         proximityTier: 'National BIS Network',
+        pincode: l.pincode,
+        email: l.contact_email,
+        phone: l.contact_phone,
+        website: l.website,
+        lat: l.latitude,
+        lng: l.longitude,
       }));
 
   const getProximityBadgeStyle = (tier: string) => {
     const tLower = tier.toLowerCase();
-    if (tLower.includes('same city')) {
-      return 'bg-emerald-100 text-emerald-900 border-emerald-300 font-extrabold';
-    }
-    if (tLower.includes('ncr')) {
-      return 'bg-indigo-100 text-indigo-900 border-indigo-300 font-bold';
-    }
-    if (tLower.includes('state') || tLower.includes('regional')) {
-      return 'bg-blue-100 text-blue-900 border-blue-300 font-bold';
-    }
+    if (tLower.includes('same city')) return 'bg-emerald-100 text-emerald-900 border-emerald-300 font-extrabold';
+    if (tLower.includes('ncr')) return 'bg-indigo-100 text-indigo-900 border-indigo-300 font-bold';
+    if (tLower.includes('state') || tLower.includes('regional')) return 'bg-blue-100 text-blue-900 border-blue-300 font-bold';
     return 'bg-slate-100 text-slate-700 border-slate-200 font-semibold';
+  };
+
+  // Helper to generate precise Google Maps URL
+  const getMapsUrl = (lab: any) => {
+    if (lab.lat && lab.lng) {
+      return `https://www.google.com/maps/search/?api=1&query=${lab.lat},${lab.lng}`;
+    }
+    const queryParts = [lab.labName, lab.address, lab.city, lab.state, lab.pincode].filter(Boolean);
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryParts.join(', '))}`;
   };
 
   return (
     <div className="space-y-6 animate-fade-in relative">
-      {/* Location Prompt Modal (Issue 6 & Issue 7) */}
+      {/* Location Prompt Modal */}
       {showLocationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-5 relative">
@@ -221,14 +243,9 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
               </div>
             </div>
 
-            {/* Explanation of WHY location is requested */}
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 leading-relaxed space-y-1">
-              <p className="font-bold text-slate-800">
-                Why is location requested?
-              </p>
-              <p>
-                During Stage 4, sample lots must be sent to accredited laboratories. Providing your facility or district location allows Manak Setu to rank authorized laboratories by regional proximity from the official BIS directory.
-              </p>
+              <p className="font-bold text-slate-800">Why is location requested?</p>
+              <p>During Stage 4, sample lots must be sent to accredited laboratories. Providing your facility or district location allows Manak Setu to rank authorized laboratories by regional proximity from the official BIS directory.</p>
             </div>
 
             {geoError && (
@@ -534,7 +551,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
             <span className="text-[11px] text-slate-500 font-semibold">Official LIMS Database</span>
           </div>
 
-          {/* Location Reference Status & Change Location Button (Issue 6 & Issue 7) */}
+          {/* Location Reference Status & Change Location Button */}
           <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200">
             <div className="flex items-center gap-2.5 text-xs">
               <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
@@ -571,93 +588,140 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
             </div>
           ) : displayedLabs.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-              {displayedLabs.map((lab) => (
-                <div key={lab.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5 hover:border-indigo-300 transition-colors flex flex-col justify-between">
-                  <div className="space-y-2">
-                    <div className="flex flex-wrap items-start justify-between gap-1.5">
-                      <span className={`px-2 py-0.5 text-[10px] rounded-md border ${getProximityBadgeStyle(lab.proximityTier)}`}>
-                        {lab.proximityTier}
-                      </span>
-                      <div className="flex items-center gap-1">
-                        <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                          <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                          <span>{lab.status}</span>
+              {displayedLabs.map((lab) => {
+                const hasContactInfo = !!(lab.email || lab.phone || lab.website);
+                const isContactOpen = expandedContactId === lab.id;
+
+                return (
+                  <div key={lab.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5 hover:border-indigo-300 transition-colors flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex flex-wrap items-start justify-between gap-1.5">
+                        <span className={`px-2 py-0.5 text-[10px] rounded-md border ${getProximityBadgeStyle(lab.proximityTier)}`}>
+                          {lab.proximityTier}
                         </span>
-                        {lab.oslCode && (
-                          <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-indigo-100 text-indigo-800 rounded shrink-0">
-                            OSL: {lab.oslCode}
+                        <div className="flex items-center gap-1">
+                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                            <span>{lab.status}</span>
                           </span>
+                          {lab.oslCode && (
+                            <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-indigo-100 text-indigo-800 rounded shrink-0">
+                              OSL: {lab.oslCode}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                        {lab.labName}
+                      </h4>
+
+                      <div className="text-xs text-slate-600 flex items-start gap-1.5">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                        <span className="leading-relaxed">
+                          {lab.address}, {lab.city}, {lab.state} {lab.pincode && `- ${lab.pincode}`}
+                        </span>
+                      </div>
+
+                      {lab.testingScopes && lab.testingScopes.length > 0 ? (
+                        <div className="text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200/70 space-y-1.5">
+                          <span className="font-semibold text-slate-700 block">
+                            Testing Scopes & Charges:
+                          </span>
+                          {lab.testingScopes.map((scope: any, scopeIdx: number) => (
+                            <div key={`${scope.grade_type_size || "scope"}-${scope.testing_charge ?? "na"}-${scopeIdx}`} className="flex items-center justify-between gap-3">
+                              <span className="text-slate-700">{scope.grade_type_size || "Standard testing scope"}</span>
+                              {scope.testing_charge != null && (
+                                <span className="font-mono font-bold text-emerald-700 shrink-0">
+                                  ₹{scope.testing_charge.toLocaleString()} {scope.currency || lab.currency}
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      ) : lab.remarks ? (
+                        <div className="text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200/70">
+                          <span className="font-semibold text-slate-700">Testing Scope: </span>
+                          <span>{lab.remarks}</span>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {/* Contact & Map Action Bar */}
+                    <div className="flex flex-col gap-2 pt-2.5 border-t border-slate-200/70">
+                      
+                      {/* Statutory Info */}
+                      <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-100">
+                        {lab.testingCharge ? (
+                          <div>
+                            <span className="text-[10px] uppercase font-bold text-slate-500">Statutory Charge: </span>
+                            <span className="font-mono font-bold text-emerald-700">₹{lab.testingCharge.toLocaleString()} {lab.currency}</span>
+                          </div>
+                        ) : (
+                          <span className="text-[10px] text-slate-500">Statutory sample tariff</span>
+                        )}
+                        {lab.sourceUrl && (
+                          <a href={lab.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900">
+                            <span>Verify in LIMS</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
                         )}
                       </div>
-                    </div>
 
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
-                      {lab.labName}
-                    </h4>
+                      {/* Direct Actions (Maps & Contact) */}
+                      <div className="flex items-center gap-2 w-full mt-1">
+                        <a
+                          href={getMapsUrl(lab)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 text-xs font-bold transition-colors border border-emerald-200 shadow-2xs"
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
+                          <span>View on Map</span>
+                        </a>
 
-                    <div className="text-xs text-slate-600 flex items-start gap-1.5">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                      <span className="leading-relaxed">{lab.address}, {lab.city}, {lab.state}</span>
-                    </div>
-
-                    {lab.testingScopes && lab.testingScopes.length > 0 ? (
-                      <div className="text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200/70 space-y-1.5">
-                        <span className="font-semibold text-slate-700 block">
-                          Testing Scopes & Charges:
-                        </span>
-
-                        {lab.testingScopes.map((scope, scopeIdx) => (
-                          <div
-                            key={`${scope.grade_type_size || "scope"}-${scope.testing_charge ?? "na"}-${scopeIdx}`}
-                            className="flex items-center justify-between gap-3"
+                        {hasContactInfo && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedContactId(isContactOpen ? null : lab.id)}
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-2xs ${
+                              isContactOpen ? "bg-slate-800 text-white" : "bg-slate-900 text-white hover:bg-slate-800"
+                            }`}
                           >
-                            <span className="text-slate-700">
-                              {scope.grade_type_size || "Standard testing scope"}
-                            </span>
+                            <span>Contact Lab</span>
+                            {isContactOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
 
-                            {scope.testing_charge != null && (
-                              <span className="font-mono font-bold text-emerald-700 shrink-0">
-                                ₹{scope.testing_charge.toLocaleString()}{" "}
-                                {scope.currency || lab.currency}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    ) : lab.remarks ? (
-                      <div className="text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200/70">
-                        <span className="font-semibold text-slate-700">
-                          Testing Scope:{" "}
-                        </span>
-                        <span>{lab.remarks}</span>
-                      </div>
-                    ) : null}
+                      {/* Expanded Contact Dropdown */}
+                      {isContactOpen && hasContactInfo && (
+                        <div className="mt-1.5 p-3 bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2.5 animate-fade-in shadow-sm">
+                          {lab.phone && (
+                            <a href={`tel:${lab.phone}`} className="flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-indigo-600 transition-colors">
+                              <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{lab.phone}</span>
+                            </a>
+                          )}
+                          {lab.email && (
+                            <a href={`mailto:${lab.email}`} className="flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-indigo-600 transition-colors">
+                              <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{lab.email}</span>
+                            </a>
+                          )}
+                          {lab.website && (
+                            <a href={lab.website} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-indigo-600 transition-colors sm:col-span-2">
+                              <Globe className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{lab.website}</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+
                   </div>
-
-                  <div className="flex items-center justify-between pt-2.5 border-t border-slate-200/70 text-xs">
-                    {lab.testingCharge ? (
-                      <div>
-                        <span className="text-[10px] uppercase font-bold text-slate-500">Statutory Charge: </span>
-                        <span className="font-mono font-bold text-emerald-700">₹{lab.testingCharge.toLocaleString()} {lab.currency}</span>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] text-slate-500">Statutory sample tariff</span>
-                    )}
-
-                    {lab.sourceUrl && (
-                      <a
-                        href={lab.sourceUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900"
-                      >
-                        <span>Verify in LIMS</span>
-                        <ExternalLink className="w-3 h-3" />
-                      </a>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
             <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-1.5">
@@ -728,7 +792,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
           <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-900">
             <Building2 className="w-4 h-4 text-bis-700" />
-            <span>{t('s4LabInfo')}</span>
+            <span>{t('s4LabInfo') || 'Statutory Test Facilities'}</span>
           </div>
           <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
             {testingDetails.labInfo || 'BIS central laboratories, regional labs, and NABL-accredited BIS-recognized private facilities conduct statutory tests.'}
@@ -753,18 +817,17 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
           className="px-5 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-colors"
         >
           <ArrowLeft className="w-4 h-4" />
-          <span>{t('prevStepBtn')}</span>
+          <span>{t('prevStepBtn') || 'Previous Step'}</span>
         </button>
 
         <button
           onClick={onNext}
           className="px-6 py-3 rounded-xl bg-bis-900 hover:bg-bis-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all transform active:scale-95"
         >
-          <span>{t('s4ContinueBtn')}</span>
+          <span>{t('s4ContinueBtn') || 'Continue to Documents'}</span>
           <ArrowRight className="w-4 h-4 text-amber-400" />
         </button>
       </div>
     </div>
   );
 };
-

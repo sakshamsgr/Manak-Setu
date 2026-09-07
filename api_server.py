@@ -1126,8 +1126,11 @@ async def get_testing_and_labs(standard_id: str):
             type_tests.append(t)
 
     # Fetch laboratories and charges
+    # Fetch laboratories and charges
     cur.execute("""
-        SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, c.testing_charge, c.currency, c.remarks, l.status
+        SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, 
+               c.testing_charge, c.currency, c.remarks, l.status,
+               l.pincode, l.contact_email, l.contact_phone, l.website, l.latitude, l.longitude
         FROM lab_test_charges c
         JOIN laboratories l ON c.laboratory_id = l.id
         WHERE c.standard_id = %s OR c.standard_id ~* %s;
@@ -1136,17 +1139,15 @@ async def get_testing_and_labs(standard_id: str):
     labs = []
     for lr in lab_rows:
         labs.append({
-            "id": lr[0],
-            "lab_name": lr[1],
-            "osl_code": lr[2],
+            "id": lr[0], "lab_name": lr[1], "osl_code": lr[2],
             "address": lr[3] or "Authoritative BIS Recognised Laboratory",
-            "city": lr[4] or "National Network",
-            "state": lr[5] or "India",
-            "source_url": lr[6],
-            "testing_charge": float(lr[7]) if lr[7] else None,
-            "currency": lr[8] or "INR",
-            "remarks": lr[9] if lr[9] != "None" else None,
-            "status": lr[10] or "Operational"
+            "city": lr[4] or "National Network", "state": lr[5] or "India",
+            "source_url": lr[6], "testing_charge": float(lr[7]) if lr[7] else None,
+            "currency": lr[8] or "INR", "remarks": lr[9] if lr[9] != "None" else None,
+            "status": lr[10] or "Operational",
+            # New fields:
+            "pincode": lr[11], "contact_email": lr[12], "contact_phone": lr[13], 
+            "website": lr[14], "latitude": lr[15], "longitude": lr[16]
         })
 
     # Fetch grouping rules
@@ -1786,14 +1787,34 @@ async def recommend_laboratories(
         core_h, _ = extract_core_id(text_id)
         regex_pattern = get_core_regex(core_h)
 
-        cur.execute("""
-            SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
-       c.testing_charge, c.currency, c.remarks, c.grade_type_size
-            FROM laboratories l
-            LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s OR c.standard_id ~* %s)
-            ORDER BY l.id;
-        """, (text_id, regex_pattern))
-        rows = cur.fetchall()
+        # ---------------------------------------------------------
+        # BULLETPROOF FETCHING: Prevents crash if columns are missing
+        # ---------------------------------------------------------
+        try:
+            # Attempt to fetch with the NEW contact and map columns
+            cur.execute("""
+                SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
+                       c.testing_charge, c.currency, c.remarks, c.grade_type_size,
+                       l.pincode, l.contact_email, l.contact_phone, l.website, l.latitude, l.longitude
+                FROM laboratories l
+                LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s OR c.standard_id ~* %s)
+                ORDER BY l.id;
+            """, (text_id, regex_pattern))
+            rows = cur.fetchall()
+            has_new_cols = True
+            
+        except psycopg2.errors.UndefinedColumn:
+            # If columns don't exist in Supabase yet, fallback safely to old query!
+            conn.rollback() # Reset transaction state safely
+            cur.execute("""
+                SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
+                       c.testing_charge, c.currency, c.remarks, c.grade_type_size
+                FROM laboratories l
+                LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s OR c.standard_id ~* %s)
+                ORDER BY l.id;
+            """, (text_id, regex_pattern))
+            rows = cur.fetchall()
+            has_new_cols = False
 
         matched_labs = {}
         for r in rows:
@@ -1809,6 +1830,14 @@ async def recommend_laboratories(
             currency = r[9] or "INR"
             remarks = r[10] if r[10] != "None" else None
             grade_type_size = r[11] or ""
+            
+            # Safely assign new fields only if they exist
+            pincode = r[12] if has_new_cols else None
+            contact_email = r[13] if has_new_cols else None
+            contact_phone = r[14] if has_new_cols else None
+            website = r[15] if has_new_cols else None
+            latitude = r[16] if has_new_cols else None
+            longitude = r[17] if has_new_cols else None
 
             tier_score = 3
             proximity_label = "National BIS Network"
@@ -1844,6 +1873,7 @@ async def recommend_laboratories(
                 else:
                     tier_score = 4
                     proximity_label = "National Network (BIS Central/OSL)"
+            
             if lab_id not in matched_labs:
                 matched_labs[lab_id] = {
                     "id": lab_id,
@@ -1859,7 +1889,14 @@ async def recommend_laboratories(
                     "remarks": remarks,
                     "proximity_tier": proximity_label,
                     "tier_score": tier_score,
-                    "testing_scopes": []
+                    "testing_scopes": [],
+                    # Safe assignment
+                    "pincode": pincode,
+                    "contact_email": contact_email,
+                    "contact_phone": contact_phone,
+                    "website": website,
+                    "latitude": latitude,
+                    "longitude": longitude
                 }
 
             scope = {
