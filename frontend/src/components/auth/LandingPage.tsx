@@ -187,8 +187,29 @@ export const LandingPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
-      <div className="max-w-4xl w-full bg-white rounded-3xl shadow-xl overflow-hidden grid grid-cols-1 md:grid-cols-2">
+    <div
+      className="min-h-screen flex flex-col justify-center items-center p-4 relative"
+      style={{
+        backgroundImage: 'url(/bis-building-bg.png)',
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat',
+      }}
+    >
+      {/* Semi-transparent white overlay — pointer-events: none so it never blocks clicks */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          backgroundColor: 'rgba(255, 255, 255, 0.52)',
+          pointerEvents: 'none',
+          zIndex: 0,
+        }}
+      />
+
+      {/* Login card sits above the overlay */}
+      <div className="max-w-4xl w-full bg-white rounded-3xl shadow-xl overflow-hidden grid grid-cols-1 md:grid-cols-2 relative" style={{ zIndex: 1 }}>
         
         {/* Left Side */}
         <div className="bg-gradient-to-br from-bis-950 via-bis-900 to-bis-800 p-10 text-white flex flex-col justify-center space-y-6">
