@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck, Mail, KeyRound, User, Loader2, Calendar, Eye, EyeOff, ArrowLeft, RotateCcw } from 'lucide-react';
+import { ShieldCheck, Mail, KeyRound, User, Loader2, Eye, EyeOff, ArrowLeft, RotateCcw } from 'lucide-react';
 import { authApi } from '../../services/authApi';
 import { useAuth } from '../../context/AuthContext';
 
@@ -13,7 +13,6 @@ export const LandingPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [dob, setDob] = useState('');
   const [otp, setOtp] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
@@ -31,7 +30,6 @@ export const LandingPage: React.FC = () => {
     setPassword('');
     setConfirmPassword('');
     setFullName('');
-    setDob('');
     setOtp('');
     setShowPassword(false);
     clearMessages();
@@ -75,14 +73,14 @@ export const LandingPage: React.FC = () => {
 
     setIsLoading(true);
     try {
-      await authApi.signup({ full_name: fullName.trim(), dob, email, password });
+      await authApi.signup({ full_name: fullName.trim(), email, password });
       setStep('verify-signup');
       setSuccessMsg(`OTP sent to ${email}`);
     } catch (err: any) {
       const errorMsg = err.message?.toLowerCase() || '';
       if (errorMsg.includes('already exists') || errorMsg.includes('already registered')) {
-        setStep('verify-signup');
-        setError('An account with this email already exists but is unverified. Please enter your OTP.');
+        // FIX: Display clean error and stay on signup page instead of jumping to verify
+        setError('Account already exists, please log in to continue.');
       } else {
         setError(err.message || 'Signup failed.');
       }
@@ -188,8 +186,6 @@ export const LandingPage: React.FC = () => {
     }
   };
 
-  const maxDate = new Date().toISOString().split("T")[0];
-
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
       <div className="max-w-4xl w-full bg-white rounded-3xl shadow-xl overflow-hidden grid grid-cols-1 md:grid-cols-2">
@@ -274,11 +270,6 @@ export const LandingPage: React.FC = () => {
               <div className="relative">
                 <User className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
                 <input type="text" required placeholder="Full Name" autoComplete="name" value={fullName} onChange={(e) => setFullName(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm" />
-              </div>
-              
-              <div className="relative">
-                <Calendar className="w-5 h-5 text-slate-400 absolute left-4 top-3" />
-                <input type="date" required max={maxDate} value={dob} onChange={(e) => setDob(e.target.value)} className="w-full pl-12 pr-4 py-2.5 rounded-xl border border-slate-300 bg-slate-50 focus:bg-white text-sm text-slate-700" />
               </div>
               
               <div className="relative">

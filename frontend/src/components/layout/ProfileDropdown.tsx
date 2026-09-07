@@ -49,17 +49,6 @@ export const ProfileDropdown: React.FC = () => {
                 <span className="text-sm font-medium truncate">{user?.email}</span>
               </div>
             </div>
-
-           
-
-            <div className="flex items-center gap-3 text-slate-800">
-              <Calendar className="w-5 h-5 text-slate-400" />
-              <div className="flex flex-col">
-                <span className="text-xs text-slate-500 font-bold uppercase tracking-wider">DOB</span>
-                {/* Dynamically show the DOB, or fallback if it's missing */}
-                <span className="text-sm font-medium truncate">{user?.dob || 'Not provided'}</span> 
-              </div>
-            </div>
           
           </div>
 

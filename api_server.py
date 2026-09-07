@@ -98,7 +98,6 @@ JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 
 class SignupRequest(BaseModel):
     full_name: str
-    dob: Optional[str] = None
     email: str
     password: str
 
@@ -196,8 +195,8 @@ async def signup(req: SignupRequest):
 
         hashed_password = bcrypt.hashpw(req.password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
         cursor.execute(
-            "INSERT INTO users (full_name, dob, email, password_hash, is_verified) VALUES (%s, %s, %s, %s, FALSE)",
-            (req.full_name, req.dob, clean_email, hashed_password)
+            "INSERT INTO users (full_name, email, password_hash, is_verified) VALUES (%s, %s, %s, FALSE)",
+            (req.full_name, clean_email, hashed_password)
         )
         conn.commit()
         cursor.close()
@@ -243,17 +242,16 @@ async def verify_signup(req: VerifySignupRequest, response: Response):
             conn.commit()
             raise HTTPException(status_code=400, detail=f"Incorrect OTP. You have {4 - attempts} attempts left.")
 
-        cursor.execute("UPDATE users SET is_verified = TRUE WHERE email = %s RETURNING id, full_name, dob", (clean_email,))
+        cursor.execute("UPDATE users SET is_verified = TRUE WHERE email = %s RETURNING id, full_name", (clean_email,))
         user = cursor.fetchone()
 
         cursor.execute("DELETE FROM auth_otps WHERE email = %s AND purpose = 'signup'", (clean_email,))
         conn.commit()
         
-        dob_str = str(user[2]) if user and user[2] else ""
         user_name = user[1] if user and user[1] else clean_email.split("@")[0]
-        access_token = create_access_token(data={"sub": clean_email, "name": user_name, "dob": dob_str})
+        access_token = create_access_token(data={"sub": clean_email, "name": user_name})
         response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=False)
-        return {"message": "Verification successful", "user": {"email": clean_email, "name": user_name, "dob": dob_str}}
+        return {"message": "Verification successful", "user": {"email": clean_email, "name": user_name}}
     except HTTPException:
         raise
     except Exception:
@@ -295,7 +293,7 @@ async def login(req: LoginRequest, response: Response):
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT password_hash, full_name, is_verified, dob FROM users WHERE email = %s", (clean_email,))
+        cursor.execute("SELECT password_hash, full_name, is_verified FROM users WHERE email = %s", (clean_email,))
         user = cursor.fetchone()
         cursor.close()
     except Exception as e:
@@ -318,13 +316,12 @@ async def login(req: LoginRequest, response: Response):
     if not user[2]:
         raise HTTPException(status_code=403, detail="Email not verified. Please complete signup verification.")
 
-    dob_str = str(user[3]) if user[3] else ""
     user_name = user[1] if user[1] else clean_email.split("@")[0]
     access_token = create_access_token(
-        data={"sub": clean_email, "name": user_name, "dob": dob_str}
+        data={"sub": clean_email, "name": user_name}
     )
     response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=False)
-    return {"message": "Login successful", "user": {"email": clean_email, "name": user_name, "dob": dob_str}}
+    return {"message": "Login successful", "user": {"email": clean_email, "name": user_name}}
 
 @app.post("/auth/forgot-password")
 async def forgot_password(req: ForgotPasswordRequest):
@@ -426,7 +423,7 @@ async def get_me(request: Request):
         raise HTTPException(status_code=401, detail="Not authenticated")
     try:
         payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        return {"email": payload.get("sub"), "name": payload.get("name"), "dob": payload.get("dob")}
+        return {"email": payload.get("sub"), "name": payload.get("name")}
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Session expired")
     except jwt.InvalidTokenError:
