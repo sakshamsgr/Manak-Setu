@@ -112,7 +112,7 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
             className="flex items-center gap-1.5 text-xs font-bold text-slate-600 hover:text-bis-900 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>{t('productGuide.newSearch') || 'New Product Search'}</span>
+            <span><b>{t('New Product Search') || 'New Product Search'}</b></span>
           </button>
           <div className="h-4 w-px bg-slate-200" />
           <div className="text-xs text-slate-500 flex items-center gap-1.5">
