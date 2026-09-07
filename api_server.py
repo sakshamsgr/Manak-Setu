@@ -1303,7 +1303,7 @@ async def get_standard_process(standard_id: str):
     cur.execute("""
         SELECT step_number, step_name, description, responsible_party, fee_type, fee_amount, source_url
         FROM certification_process_steps
-        WHERE standard_id = %s OR standard_id ILIKE '%%368%%'
+        WHERE standard_id = %s
         ORDER BY step_number ASC;
     """, (standard_id,))
     rows = cur.fetchall()
@@ -1338,7 +1338,7 @@ async def calculate_fees(req: EstimatorCalculateRequest):
     cur.execute("SELECT fee_type, amount, unit, applicable_to, notes FROM bis_fees WHERE scheme = %s;", (req.scheme,))
     fee_rows = cur.fetchall()
 
-    cur.execute("SELECT AVG(testing_charge) FROM lab_test_charges WHERE standard_id = %s OR standard_id ILIKE '%%368%%';", (req.standard_id,))
+    cur.execute("SELECT AVG(testing_charge) FROM lab_test_charges WHERE standard_id = %s;", (req.standard_id,))
     avg_lab_charge = cur.fetchone()[0] or 6000
     cur.close()
     conn.close()
@@ -1547,7 +1547,7 @@ async def verify_consumer_mark(
                 SELECT q.qco_name, q.notification_number, q.effective_date 
                 FROM qco_standards qs
                 JOIN qcos q ON qs.qco_id = q.id
-                WHERE qs.standard_id = %s OR qs.standard_id ILIKE '%%368%%'
+                WHERE qs.standard_id = %s
                 LIMIT 1;
             """, (row[0],))
             qco_row = cur.fetchone()
@@ -1747,7 +1747,7 @@ async def recommend_laboratories(
             SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
        c.testing_charge, c.currency, c.remarks, c.grade_type_size
             FROM laboratories l
-            LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s OR c.standard_id ILIKE '%%368%%')
+            LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s)
             ORDER BY l.id;
         """, (text_id,))
         rows = cur.fetchall()
