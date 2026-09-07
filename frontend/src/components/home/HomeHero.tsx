@@ -42,45 +42,32 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
     {
       icon: <Zap className="w-3.5 h-3.5 text-amber-500" />,
       label: 'Electric Iron (Dry / Steam)',
-      prompt: 'I manufacture electric iron. What BIS standards, QCO orders, and testing requirements do I need to follow?',
+      prompt: 'Electric Iron',
       product: 'Electric Iron',
       cat: 'Electrical & Electronics',
     },
     {
       icon: <Zap className="w-3.5 h-3.5 text-amber-500" />,
       label: 'Electric Kettles & Geysers',
-      prompt: 'What are the Scheme-I ISI marking requirements and dielectric safety tests for electric kettles under IS 302?',
+      prompt: 'Electric Kettle',
       product: 'Electric Kettle',
       cat: 'Electrical & Electronics',
     },
     {
       icon: <Droplets className="w-3.5 h-3.5 text-bis-500" />,
       label: 'Packaged Drinking Water',
-      prompt: 'What are the mandatory licensing steps and chemical testing parameters for Packaged Drinking Water under IS 10500?',
+      prompt: 'Packaged Drinking Water',
       product: 'Packaged Drinking Water',
       cat: 'Food & Agriculture',
     },
     {
       icon: <Radio className="w-3.5 h-3.5 text-purple-500" />,
       label: 'PVC Cables & Wires',
-      prompt: 'Is ISI mark mandatory for PVC insulated building wires under IS 694? What is the factory audit protocol?',
+      prompt: 'PVC Cables & Wires',
       product: 'PVC Insulated Cables',
       cat: 'Electrical & Electronics',
     },
-    {
-      icon: <Gem className="w-3.5 h-3.5 text-amber-500" />,
-      label: 'Gold Jewellery Hallmarking (HUID)',
-      prompt: 'What are the mandatory BIS hallmarking guidelines, 6-digit HUID rules, and jeweller registration procedures?',
-      product: 'Gold Jewellery Artefacts',
-      cat: 'Hallmarking & Jewellery',
-    },
-    {
-      icon: <Award className="w-3.5 h-3.5 text-emerald-500" />,
-      label: 'Lithium-ion Batteries (CRS)',
-      prompt: 'What are the Scheme-II Compulsory Registration (CRS) requirements and lab test reports for secondary lithium batteries under IS 16046?',
-      product: 'Lithium-ion Battery Pack',
-      cat: 'Electrical & Electronics',
-    },
+
   ];
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -373,7 +360,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
                   ))}
                 </div>
               ) : (
-                <div className="h-[155px] p-4 rounded-2xl bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center text-center space-y-1">
+                <div className="h-[116px] p-4 rounded-2xl bg-slate-50 border border-dashed border-slate-300 flex flex-col items-center justify-center text-center space-y-1">
                   <div className="w-8 h-8 rounded-xl bg-slate-100 text-slate-400 flex items-center justify-center">
                     <Bookmark className="w-4 h-4 text-slate-400" />
                   </div>
