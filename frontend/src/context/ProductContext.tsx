@@ -299,6 +299,12 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
           relatedStandards: resolved.standard.related_standards || [],
           officialSource: resolved.standard.official_source,
           officialUrl: resolved.standard.pdf_url || 'https://www.services.bis.gov.in',
+          confidence: (resolved.standard.confidence as 'HIGH' | 'MEDIUM' | 'NEEDS_VERIFICATION') || undefined,
+          // Step 2 validation fields from backend RAG check
+          confirmed: resolved.standard.confirmed ?? true,
+          reason: resolved.standard.reason || undefined,
+          evidenceDocument: resolved.standard.evidence_document ?? null,
+          evidencePage: resolved.standard.evidence_page ?? null,
         },
         certificationDetails: {
           isMandatory: resolved.certification.is_mandatory,
