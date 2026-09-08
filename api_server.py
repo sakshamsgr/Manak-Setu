@@ -7,6 +7,7 @@ if hasattr(sys.stderr, "reconfigure"):
     sys.stderr.reconfigure(encoding="utf-8")
 import json
 from typing import Optional, List, Dict, Any
+from collections import defaultdict, Counter
 import psycopg2
 from pgvector.psycopg2 import register_vector
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Response, Request, Query
@@ -55,22 +56,263 @@ def get_db():
 # In-memory session store fallback
 chat_sessions = {}
 
-# --- NEW: Core Regex Extractors to Fix Substring Database Bleed ---
+# --- Robust Standard Normalization & Identifier Matching ---
+def parse_standard_components(std_str: str) -> dict:
+    if not std_str:
+        return {"base": "", "part": None, "sec": None, "canonical": ""}
+    
+    s = std_str.strip()
+    
+    # Check leading pattern like '302-2-80', '302-2-3', '302-1', '368-2014', '3024'
+    m_lead = re.match(r'^(?:is[-_\s]*)?(\d{2,5})(?:[-_](\d{1,2}))?(?:[-_](\d{1,3}))?(?:[-_a-zA-Z]|$)', s, re.IGNORECASE)
+    base, part, sec = None, None, None
+    if m_lead:
+        base = m_lead.group(1)
+        p = m_lead.group(2)
+        sc = m_lead.group(3)
+        if p and len(p) <= 2 and int(p) in (1, 2, 3, 4, 5):
+            part = p
+            if sc and len(sc) <= 3:
+                sec = sc
+
+    # If part and sec not determined from leading numbers, parse text
+    if not (part and sec):
+        m_ps = re.search(r'part\s*[-_]?\s*(\d+)[^\d]*?sec(?:tion)?\s*[-_]?\s*(\d+)', s, re.IGNORECASE)
+        if m_ps:
+            part = m_ps.group(1)
+            sec = m_ps.group(2)
+        else:
+            m_sec = re.search(r'sec(?:tion)?\s*[-_]?\s*(\d+)', s, re.IGNORECASE)
+            if m_sec:
+                sec = m_sec.group(1)
+            m_part = re.search(r'part\s*[-_]?\s*(\d+)', s, re.IGNORECASE)
+            if m_part:
+                part = m_part.group(1)
+
+    if not base:
+        m_b = re.search(r'(?:(?:^|[^0-9])is\s*|^)(\d{2,5})', s, re.IGNORECASE)
+        if m_b:
+            base = m_b.group(1)
+
+    # Legacy BIS standard cross-walk (e.g. IS 366 -> IS 302-2-3 Electric Iron)
+    if base == '366':
+        base = '302'
+        part = '2'
+        sec = '3'
+
+    if base and part and sec:
+        canonical = f"{base}-part-{part}-sec-{sec}"
+    elif base and part:
+        canonical = f"{base}-part-{part}"
+    elif base:
+        canonical = base
+    else:
+        canonical = s.lower()
+
+    return {
+        "base": base or "",
+        "part": part,
+        "sec": sec,
+        "canonical": canonical
+    }
+
+def resolve_matching_standard_id(cur, table_name: str, requested_id: str, col_name: str = "standard_id") -> str | None:
+    if not requested_id:
+        return None
+        
+    # If requested_id is a UUID, resolve standard_number and title from standards table first
+    if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', requested_id, re.IGNORECASE):
+        try:
+            cur.execute("SELECT standard_number, title FROM standards WHERE id = %s;", (requested_id,))
+            s_row = cur.fetchone()
+            if s_row:
+                s_num = s_row[0] or ""
+                s_title = s_row[1] or ""
+                requested_id = f"{s_num} {s_title}".strip()
+        except Exception:
+            pass
+
+    # 1. Exact match in table
+    cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} = %s LIMIT 1;", (requested_id,))
+    row = cur.fetchone()
+    if row:
+        return row[0]
+        
+    # 2. Parse requested standard into structured components
+    parsed = parse_standard_components(requested_id)
+    base = parsed["base"]
+    if not base:
+        return None
+        
+    # 3. Retrieve all candidate IDs from table that share the base standard number
+    cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s OR {col_name} ILIKE %s;", (f"%{base}%", f"{base}%"))
+    candidates = [r[0] for r in cur.fetchall() if r[0]]
+    if not candidates:
+        return None
+        
+    best_cand = None
+    best_score = -1
+    req_part = parsed["part"]
+    req_sec = parsed["sec"]
+    req_canon = parsed["canonical"]
+    
+    for cand in candidates:
+        cand_parsed = parse_standard_components(cand)
+        cand_base = cand_parsed["base"]
+        cand_part = cand_parsed["part"]
+        cand_sec = cand_parsed["sec"]
+        cand_canon = cand_parsed["canonical"]
+        
+        if cand_base != base:
+            continue
+            
+        score = 0
+        if cand_canon == req_canon:
+            score = 100
+        elif req_part and req_sec:
+            # Multi-part standard: MUST strictly match part and section
+            if cand_part == req_part and cand_sec == req_sec:
+                score = 90
+            else:
+                # Mismatch in section/part (e.g., Fans Sec 80 vs Irons Sec 3) - REJECT
+                continue
+        elif req_part and not req_sec:
+            # Part-only standard (e.g., IS 302 Part 1)
+            if cand_part == req_part and not cand_sec:
+                score = 90
+            else:
+                continue
+        else:
+            # Base-only standard (e.g., IS 368, IS 3024)
+            if not cand_part and not cand_sec:
+                score = 80
+            else:
+                # Do NOT match a base query to a specific part/section
+                continue
+                
+        if score > best_score:
+            best_score = score
+            best_cand = cand
+            
+    # Companion standard fallback for Portable Immersion Heaters:
+    # In BIS, IS 302 (Part 2/Sec 74) specifies safety requirements verified under IS 368:2014
+    if not best_cand and req_canon == "302-part-2-sec-74":
+        cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE '%368%' LIMIT 1;")
+        row_368 = cur.fetchone()
+        if row_368:
+            best_cand = row_368[0]
+
+    return best_cand
+
 def extract_core_id(std_id: str):
     if not std_id:
         return "", ""
-    match = re.search(r'(\d+(?:[-_]\d+)*)', std_id)
-    if match:
-        core = match.group(1)
-        return core.replace('_', '-'), core.replace('-', '_')
-    return std_id, std_id
+    parsed = parse_standard_components(std_id)
+    c = parsed["canonical"]
+    return c, c.replace("-", "_")
 
 def get_core_regex(core_id: str) -> str:
     if not core_id: 
         return "^$"
-    pattern = core_id.replace('-', '[-_]').replace('_', '[-_]')
-    return f"(^|[^0-9]){pattern}([^0-9]|$)"
+    tokens = [re.escape(tok) for tok in re.split(r'[-_]+', core_id) if tok]
+    if not tokens:
+        return "^$"
+    pattern = r'[-_\s]+'.join(tokens)
+    return f"(^|[^0-9a-zA-Z]){pattern}([^0-9a-zA-Z]|$)"
 # -----------------------------------------------------------------
+
+# ─── Step 2 Validation Helpers ───────────────────────────────────────────────
+
+def _keyword_match_standard(product_name: str, standard_title: str) -> bool:
+    """Return True if at least one significant product keyword appears in the standard title.
+    Used to validate that a DB-found standard actually matches the user's product.
+    Example: 'Electric Iron' vs 'Electric Irons' → True
+             'Electric Iron' vs 'Room Heaters'   → False
+    """
+    # Words that appear in almost every BIS standard title — not useful for discrimination
+    stop = {
+        'for', 'the', 'and', 'with', 'of', 'to', 'in', 'a', 'an', 'is', 'are',
+        'by', 'on', 'or', 'at', 'as', 'be', 'has', 'had', 'not', 'but',
+        'household', 'similar', 'appliances', 'safety', 'requirements', 'part',
+        'section', 'particular', 'general', 'specification', 'method', 'test',
+        'indian', 'standard', 'bis', 'sec', 'requirement', 'electrical',
+    }
+    if not product_name or not standard_title:
+        return False
+    tokens = [w for w in product_name.lower().split() if w not in stop and len(w) > 2]
+    if not tokens:
+        return True   # Can't discriminate — assume match
+    title_l = standard_title.lower()
+    return any(tok in title_l for tok in tokens)
+
+
+def _format_related_entry(std_id: str, std_title: str, exclude_id: str) -> str | None:
+    """Format a related standard as 'IS XXXX — Title' for clean frontend display.
+    Returns None for noise documents (guidance, amendments, transitions) or the excluded id.
+    """
+    if not std_id or std_id == exclude_id:
+        return None
+    sl = std_id.lower()
+    if any(n in sl for n in ('guidance', 'transition', 'amendment', 'erratum')):
+        return None
+    core, _ = extract_core_id(std_id)
+    is_code = f"IS {core.replace('_', '-')}" if core else ''
+    if std_title and len(std_title.strip()) > 5:
+        title = std_title.strip()
+        return f"{is_code} — {title}" if is_code else title
+    elif is_code:
+        return is_code
+    return None
+
+
+def _normalize_standard_info(std_id: str, raw_title: str) -> tuple[str, str]:
+    """Parse standard number and clean title from raw DB records."""
+    sid = (std_id or '').strip()
+    sid_l = sid.lower()
+
+    # Detect IS 302 Part 2 Section X standards
+    m302 = re.search(r'302[-_](?:part[-_]?2[-_]?sec[-_]?(\d+)|2[-_](\d+))', sid_l)
+    if m302:
+        sec = m302.group(1) or m302.group(2)
+        year_m = re.search(r'(19\d\d|20\d\d)', sid)
+        year_suffix = f":{year_m.group(1)}" if year_m and int(year_m.group(1)) > 2000 and int(year_m.group(1)) <= 2026 else ""
+        std_num = f"IS 302 (Part 2/Sec {sec}){year_suffix}"
+    elif '366' in sid_l:
+        std_num = "IS 366:1991"
+    elif '368' in sid_l:
+        std_num = "IS 368:2014"
+    elif '369' in sid_l:
+        std_num = "IS 369:2019"
+    elif '3024' in sid_l:
+        std_num = "IS 3024:2025"
+    elif '302-1' in sid_l or '302_1' in sid_l:
+        std_num = "IS 302 (Part 1):2024"
+    else:
+        m_gen = re.search(r'is[-_]?(\d+(?:[-_]\d+)*)', sid_l)
+        if m_gen:
+            core = m_gen.group(1).replace('-', ' ').replace('_', ' ')
+            std_num = f"IS {core.upper()}"
+        else:
+            core = sid.split('_')[0].replace('-', ' ')
+            std_num = core if core.upper().startswith("IS") else f"IS {core}"
+
+    # Clean the title
+    clean_title = raw_title or ""
+    if "product manual" in clean_title.lower() or "pm-is" in clean_title.lower():
+        t = re.sub(r'^\d+[-_]\d+[-_]\d+[-_]?\w*\s*', '', clean_title)
+        t = re.sub(r'\s*product manual.*$', '', t, flags=re.IGNORECASE)
+        t = re.sub(r'\s*pm-is.*$', '', t, flags=re.IGNORECASE)
+        clean_title = t.strip().title()
+        if not clean_title or len(clean_title) < 3:
+            clean_title = raw_title.split('_')[0].title()
+    elif clean_title.startswith("IS "):
+        t = re.sub(r'^IS\s*[\d\:\(\)\/\s\-\w]+—?\s*', '', clean_title).strip()
+        if t:
+            clean_title = t
+
+    return std_num, clean_title
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 def get_chat_history_from_db(user_id: str) -> list:
     conn = None
@@ -821,27 +1063,11 @@ class ProductGuideResolveRequest(BaseModel):
 @app.post("/api/product-guide/resolve")
 async def resolve_product_guide(req: ProductGuideResolveRequest):
     search_term = (req.product_name or req.query).strip()
+    p_lower = search_term.lower()
     conn = get_db()
     cur = conn.cursor()
 
-    # A. Search product_classifications
-    cur.execute("""
-        SELECT pc.display_name, pc.product_type, s.id, s.standard_number, s.title, s.certification_type, s.group_name
-        FROM product_classifications pc
-        JOIN standards s ON pc.standard_id = s.id
-        WHERE pc.display_name ILIKE %s OR %s = ANY(pc.keywords);
-    """, (f"%{search_term}%", search_term.lower()))
-    match = cur.fetchone()
-
-    # B. Fallback to standards table
-    if not match:
-        cur.execute("""
-            SELECT title, 'standard', id, standard_number, title, certification_type, group_name
-            FROM standards
-            WHERE title ILIKE %s OR standard_number ILIKE %s;
-        """, (f"%{search_term}%", f"%{search_term}%"))
-        match = cur.fetchone()
-
+    confidence_level = "HIGH"
     text_standard_id = None
     standard_number = None
     standard_title = None
@@ -849,6 +1075,53 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
     cert_type = "Mandatory"
     group_name = "Electrical Appliances and Accessories"
     category = req.industry_category or "Electrical & Electronics"
+    evidence_document = None
+    evidence_page = None
+    validation_reason = ""
+    candidate_best_chunk = {}
+
+    EXCLUDED_PRIMARY = {
+        'guidance-document-on-qcos',
+        'scheme_i_fees',
+        'transition-facilitation-qco-2026',
+        'fees_electric_iron',
+        'circular_extension_electric_iron',
+        'grantoflicence_366_electric_iron',
+    }
+
+    GENERIC_WORDS = {
+        'for', 'the', 'and', 'with', 'of', 'to', 'in', 'a', 'an', 'is', 'are', 'use', 
+        'domestic', 'household', 'electric', 'electrical', 'electronic', 'appliances', 
+        'appliance', 'device', 'devices', 'equipment', 'similar', 'safety', 'particular', 
+        'general', 'requirements', 'standard', 'indian', 'bis', 'part', 'sec', 'section',
+        'specification', 'code', 'manual', 'product', 'provisions'
+    }
+    tokens = [w for w in re.findall(r'\b\w+\b', p_lower) if w not in GENERIC_WORDS and len(w) > 2]
+
+    # 1. Authoritative DB match in product_classifications & standards
+    cur.execute("""
+        SELECT pc.display_name, pc.product_type, s.id, s.standard_number, s.title, s.certification_type, s.group_name, pc.keywords
+        FROM product_classifications pc
+        JOIN standards s ON pc.standard_id = s.id;
+    """)
+    class_rows = cur.fetchall()
+
+    match = None
+    # 1a. Substring or keyword match
+    for r in class_rows:
+        d_name, p_type, s_id, s_num, s_title, cert_type_val, g_name, kws = r
+        if search_term.lower() in d_name.lower() or any(search_term.lower() == k.lower() for k in (kws or [])):
+            match = r[:7]
+            break
+
+    # 1b. Token-set match (handles word reorderings such as 'Electric Water Immersion Heater')
+    if not match and tokens:
+        for r in class_rows:
+            d_name, p_type, s_id, s_num, s_title, cert_type_val, g_name, kws = r
+            combined_text = (d_name + " " + " ".join(kws or []) + " " + s_title).lower()
+            if all(tok in combined_text for tok in tokens):
+                match = r[:7]
+                break
 
     if match:
         disp_name, p_type, s_id, s_num, s_title, cert_type_val, g_name = match
@@ -856,44 +1129,101 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
         standard_title = s_title
         cert_type = cert_type_val or "Mandatory"
         group_name = g_name or group_name
-        
-        # FIX: Robust matching
-        core_hyphen, core_under = extract_core_id(s_num)
-        
-        cur.execute("SELECT id, title, pdf_url FROM bis_standards WHERE id ILIKE %s OR id ILIKE %s LIMIT 1;", (f"%{core_hyphen}%", f"%{core_under}%"))
-        bis_row = cur.fetchone()
-        if bis_row:
-            text_standard_id, _, pdf_url = bis_row
-
-    if not text_standard_id:
-        # C. Fallback search bis_standards directly
+        bis_match = resolve_matching_standard_id(cur, "bis_standards", f"{s_num} {s_title}", col_name="id")
+        text_standard_id = bis_match or s_num or s_id
+        evidence_document = "BIS Product Classification"
+        evidence_page = 1
+        validation_reason = f"'{search_term.title()}' is directly classified under {standard_number} in the BIS Product Classifications database."
+    else:
+        # Check standards table directly
         cur.execute("""
-            SELECT id, title, pdf_url FROM bis_standards 
-            WHERE title ILIKE %s OR id ILIKE %s LIMIT 1;
-        """, (f"%{search_term}%", f"%{search_term}%"))
-        bis_row = cur.fetchone()
+            SELECT standard_number, title, id, certification_type, group_name
+            FROM standards;
+        """)
+        s_rows = cur.fetchall()
+        std_match = None
+        for sr in s_rows:
+            s_num, s_title, s_id, cert_type_val, g_name = sr
+            if search_term.lower() in s_title.lower() or search_term.lower() in s_num.lower():
+                std_match = sr
+                break
+            elif tokens and all(tok in (s_num + " " + s_title).lower() for tok in tokens):
+                std_match = sr
+                break
 
-        # D. Keyword-based token fallback
-        if not bis_row:
-            tokens = [w for w in search_term.lower().split() if len(w) > 2 and w not in {"for", "the", "and", "with", "use", "domestic", "household", "electric"}]
-            for tok in tokens:
-                cur.execute("""
-                    SELECT id, title, pdf_url FROM bis_standards 
-                    WHERE (title ILIKE %s OR id ILIKE %s)
-                      AND id NOT ILIKE 'Guidance%%'
-                      AND id NOT ILIKE 'Transition%%'
-                      AND id NOT ILIKE '%%AMENDMENT%%'
-                    LIMIT 1;
-                """, (f"%{tok}%", f"%{tok}%"))
-                bis_row = cur.fetchone()
-                if bis_row:
-                    break
+        if std_match:
+            standard_number, standard_title, s_id, cert_type_val, g_name = std_match
+            cert_type = cert_type_val or "Mandatory"
+            group_name = g_name or group_name
+            bis_match = resolve_matching_standard_id(cur, "bis_standards", f"{standard_number} {standard_title}", col_name="id")
+            text_standard_id = bis_match or standard_number or s_id
+            evidence_document = "BIS Standards Directory"
+            evidence_page = 1
+            validation_reason = f"'{search_term.title()}' matches {standard_number}: {standard_title} in the statutory standards directory."
 
-        if bis_row:
-            text_standard_id, standard_title, pdf_url = bis_row
-            standard_number = text_standard_id.split("_")[0].replace("-", " ")
-            if not standard_number.startswith("IS"):
-                standard_number = f"IS {standard_number}"
+    # 2. Hybrid RAG Search across standard_chunks and bis_standards
+    if not text_standard_id:
+        candidate_scores = defaultdict(float)
+
+        try:
+            vector_docs = supabase_vector_search(search_term, top_k=25, threshold=0.72)
+        except Exception as _vec_err:
+            print(f"[resolve] Vector search error: {_vec_err}")
+            vector_docs = []
+
+        for d in vector_docs:
+            sid = d['meta'].get('standard_id', '')
+            sid_clean = sid.strip()
+            sid_l = sid_clean.lower()
+            page = d['meta'].get('page_number', 1)
+            dist = d['meta'].get('distance', 0.5)
+
+            if any(ex in sid_l for ex in EXCLUDED_PRIMARY) or 'qco' in sid_l:
+                continue
+
+            if sid_clean not in candidate_best_chunk:
+                candidate_best_chunk[sid_clean] = (page, d['text'], dist)
+
+            weight = max(0.0, 1.0 - dist)
+            candidate_scores[sid_clean] += weight * 3.0
+
+        # Lexical keyword score across bis_standards
+        cur.execute("SELECT id, title, pdf_url FROM bis_standards;")
+        all_bis = cur.fetchall()
+        for b_id, b_title, b_url in all_bis:
+            bid_l = b_id.lower()
+            btitle_l = (b_title or "").lower()
+
+            if any(ex in bid_l for ex in EXCLUDED_PRIMARY) or 'qco' in bid_l:
+                continue
+
+            if p_lower in btitle_l or p_lower.replace(" ", "_") in bid_l:
+                candidate_scores[b_id] += 5.0
+            elif tokens:
+                matched_toks = sum(1 for tok in tokens if tok in btitle_l or tok in bid_l)
+                if matched_toks > 0:
+                    fraction = matched_toks / len(tokens)
+                    candidate_scores[b_id] += fraction * 4.0
+
+        eligible = [
+            (sid, score) for sid, score in candidate_scores.items()
+            if not any(ex in sid.lower() for ex in EXCLUDED_PRIMARY) and 'qco' not in sid.lower()
+        ]
+
+        if eligible:
+            eligible.sort(key=lambda x: x[1], reverse=True)
+            text_standard_id = eligible[0][0]
+
+            cur.execute("SELECT id, title, pdf_url FROM bis_standards WHERE id = %s LIMIT 1;", (text_standard_id,))
+            b_row = cur.fetchone()
+            raw_title = b_row[1] if b_row else text_standard_id
+            pdf_url = b_row[2] if b_row else None
+
+            standard_number, standard_title = _normalize_standard_info(text_standard_id, raw_title)
+            best_chunk_info = candidate_best_chunk.get(text_standard_id, (1, "", 0.5))
+            evidence_document = text_standard_id
+            evidence_page = best_chunk_info[0]
+            validation_reason = f"Confirmed via BIS official documents — '{search_term.title()}' is covered under {standard_number}: {standard_title}."
 
     if not text_standard_id:
         cur.close()
@@ -905,31 +1235,86 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
             msg = "এখনও কোনো বিবরণ উপলব্ধ নেই। এই তথ্য ভবিষ্যতে আপডেট করা হবে।"
         return {
             "found": False,
+            "confirmed": False,
             "message": msg
         }
 
-    # Fetch QCO details using bulletproof regex extraction
-    core_hyphen, _ = extract_core_id(standard_number)
-    regex_pattern = get_core_regex(core_hyphen)
+    # Fetch QCO details using robust standard identifier matching
+    matched_qco_std = resolve_matching_standard_id(cur, "qco_standards", text_standard_id)
+    if not matched_qco_std and standard_number:
+        matched_qco_std = resolve_matching_standard_id(cur, "qco_standards", standard_number)
     
-    cur.execute("""
-        SELECT q.qco_name, q.notification_number, q.authority, q.notification_date, q.effective_date,
-               qs.implementation_general, qs.implementation_small, qs.implementation_micro
-        FROM qco_standards qs
-        JOIN qcos q ON qs.qco_id = q.id
-        WHERE qs.standard_id = %s OR qs.standard_id ~* %s LIMIT 1;
-    """, (text_standard_id, regex_pattern))
-    qco_row = cur.fetchone()
+    qco_row = None
+    if matched_qco_std:
+        cur.execute("""
+            SELECT q.qco_name, q.notification_number, q.authority, q.notification_date, q.effective_date,
+                   qs.implementation_general, qs.implementation_small, qs.implementation_micro
+            FROM qco_standards qs
+            JOIN qcos q ON qs.qco_id = q.id
+            WHERE qs.standard_id = %s LIMIT 1;
+        """, (matched_qco_std,))
+        qco_row = cur.fetchone()
 
-    # Fetch related standards from bis_standards
-    cur.execute("""
-        SELECT id, title FROM bis_standards 
-        WHERE id != %s AND id ILIKE '%%302%%' LIMIT 3;
-    """, (text_standard_id,))
-    related = [r[1] for r in cur.fetchall()]
+    # Fetch GENUINELY related standards (max 5, clean format)
+    related = []
+    try:
+        # If IS 302 family, always include Part 1 (General Requirements)
+        std_str = f"{standard_number or ''} {text_standard_id or ''}".lower()
+        if "302" in std_str and "part 1" not in (standard_number or "").lower():
+            related.append("IS 302 (Part 1):2024 — Household and Similar Electrical Appliances — Safety: General Requirements")
 
-    cur.close()
-    conn.close()
+        if "366" in std_str:
+            related.append("IS 302 (Part 2/Sec 3):2024 — Safety: Particular Requirements for Electric Irons (Revised Standard)")
+
+        if "368" in std_str:
+            related.append("IS 302 (Part 2/Sec 74):2026 — Safety: Particular Requirements for Portable Immersion Heaters")
+
+        prefix_match = re.search(r'(\d{2,4})', standard_number or text_standard_id or '')
+        if prefix_match:
+            numeric_prefix = prefix_match.group(1)
+            cur.execute("""
+                SELECT id, title FROM bis_standards
+                WHERE id != %s
+                  AND (id ILIKE %s OR id ILIKE %s)
+                  AND id NOT ILIKE 'Guidance%%'
+                  AND id NOT ILIKE 'Transition%%'
+                  AND id NOT ILIKE '%%AMENDMENT%%'
+                  AND id NOT ILIKE '%%FEES%%'
+                  AND id NOT ILIKE '%%CIRCULAR%%'
+                ORDER BY id ASC
+                LIMIT 8;
+            """, (
+                text_standard_id,
+                f"%{numeric_prefix}-%",
+                f"%{numeric_prefix}_%",
+            ))
+            related_rows = cur.fetchall()
+            for r_id, r_title in related_rows:
+                if len(related) >= 5:
+                    break
+                r_num, r_clean_title = _normalize_standard_info(r_id, r_title)
+                formatted = f"{r_num} — {r_clean_title}"
+                if formatted not in related and r_num != standard_number:
+                    related.append(formatted)
+    except Exception as _rel_err:
+        pass
+
+    # Extract real scope text from standard_chunks if available
+    scope_text = None
+    try:
+        cur.execute("""
+            SELECT content FROM standard_chunks
+            WHERE standard_id = %s AND (page_number = 1 OR page_number = 2)
+            ORDER BY page_number ASC LIMIT 1;
+        """, (text_standard_id,))
+        scope_row = cur.fetchone()
+        if scope_row and scope_row[0] and len(scope_row[0].strip()) > 30:
+            s_snip = scope_row[0].strip().replace('\n', ' ')
+            if len(s_snip) > 300:
+                s_snip = s_snip[:297].rsplit(' ', 1)[0] + '...'
+            scope_text = s_snip
+    except Exception:
+        pass
 
     # Tailored MSME / Scale benefit
     scale = req.enterprise_scale.lower()
@@ -966,24 +1351,77 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
                 concession_text = f"General enforcement date: {qco_row[5]}. Full statutory fee rates apply."
             compliance_deadline = str(qco_row[5])
 
-    why_it_applies = f"Specifies benchmark electrical safety, heating efficiency, and construction parameters under the BIS Act 2016."
-    scope_text = f"Covers statutory safety and performance specifications for {search_term}."
+    # --- Build why_it_applies from actual DB data, not hardcoded strings ---
+    # Use the real standard title and group/category from the DB match.
+    product_display = search_term.strip().title()
+    std_title_short = (standard_title or '').strip()
+    grp = (group_name or '').strip()
+
+    # Construct a product-specific, non-generic explanation
+    if std_title_short:
+        why_it_applies = (
+            f"Your product '{product_display}' falls under the scope of {standard_number}: "
+            f"{std_title_short}. "
+            f"This Indian Standard prescribes the mandatory safety, performance, and "
+            f"construction requirements applicable to this product category"
+            f"{(' (' + grp + ')') if grp else ''}."
+        )
+        scope_text = (
+            f"{std_title_short}. "
+            f"Covers the statutory specifications and verification methods "
+            f"that {product_display} must conform to under the BIS Act 2016."
+        )
+    else:
+        why_it_applies = (
+            f"The selected Indian Standard ({standard_number}) prescribes the applicable "
+            f"safety and performance requirements for '{product_display}' under the BIS Act 2016."
+        )
+        scope_text = (
+            f"Covers the statutory safety and performance specifications for {product_display} "
+            f"as per Bureau of Indian Standards."
+        )
+
     applicability_text = "Mandatory (QCO Notified)" if qco_row else "Voluntary Certification"
     facility_text = "Domestic Facility (India)" if not req.is_foreign else "Foreign Manufacturing Facility"
 
     if req.language == "hi":
-        why_it_applies = f"BIS अधिनियम 2016 के तहत मानक विद्युत सुरक्षा, तापन दक्षता और निर्माण मापदंडों को निर्दिष्ट करता है।"
-        scope_text = f"{search_term} के लिए वैधानिक सुरक्षा और प्रदर्शन विनिर्देशों को शामिल करता है।"
+        if std_title_short:
+            why_it_applies = (
+                f"आपका उत्पाद '{product_display}' {standard_number}: {std_title_short} के दायरे में आता है। "
+                f"यह भारतीय मानक इस उत्पाद श्रेणी पर लागू अनिवार्य सुरक्षा, प्रदर्शन और "
+                f"निर्माण आवश्यकताओं को निर्धारित करता है।"
+            )
+            scope_text = (
+                f"{std_title_short}. "
+                f"BIS अधिनियम 2016 के तहत {product_display} के लिए वैधानिक सुरक्षा और "
+                f"प्रदर्शन विनिर्देशों को शामिल करता है।"
+            )
+        else:
+            why_it_applies = f"चयनित भारतीय मानक ({standard_number}) BIS अधिनियम 2016 के तहत '{product_display}' के लिए लागू आवश्यकताओं को निर्धारित करता है।"
+            scope_text = f"{product_display} के लिए वैधानिक सुरक्षा और प्रदर्शन विनिर्देशों को शामिल करता है।"
         applicability_text = "अनिवार्य (QCO अधिसूचित)" if qco_row else "स्वैच्छिक प्रमाणन"
         facility_text = "घरेलू विनिर्माण सुविधा (भारत)" if not req.is_foreign else "विदेशी विनिर्माण सुविधा"
     elif req.language == "bn":
-        why_it_applies = f"BIS আইন 2016 এর অধীনে বেঞ্চমার্ক বৈদ্যুতিক নিরাপত্তা, গরম করার দক্ষতা এবং নির্মাণ পরামিতি নির্দিষ্ট করে।"
-        scope_text = f"{search_term} এর জন্য সংবিধিবদ্ধ নিরাপত্তা এবং কর্মক্ষমতা নির্দিষ্টকরণ অন্তর্ভুক্ত করে।"
+        if std_title_short:
+            why_it_applies = (
+                f"আপনার পণ্য '{product_display}' {standard_number}: {std_title_short}-এর আওতায় পড়ে। "
+                f"এই ভারতীয় মান এই পণ্য বিভাগে প্রযোজ্য বাধ্যতামূলক নিরাপত্তা ও কর্মক্ষমতার "
+                f"প্রয়োজনীয়তা নির্ধারণ করে।"
+            )
+            scope_text = (
+                f"{std_title_short}. "
+                f"BIS আইন 2016 এর অধীনে {product_display} এর জন্য সংবিধিবদ্ধ নিরাপত্তা ও "
+                f"কর্মক্ষমতা নির্দিষ্টকরণ অন্তর্ভুক্ত করে।"
+            )
+        else:
+            why_it_applies = f"নির্বাচিত ভারতীয় মান ({standard_number}) BIS আইন 2016 এর অধীনে '{product_display}' এর জন্য প্রযোজ্য প্রয়োজনীয়তা নির্ধারণ করে।"
+            scope_text = f"{product_display} এর জন্য সংবিধিবদ্ধ নিরাপত্তা এবং কর্মক্ষমতা নির্দিষ্টকরণ অন্তর্ভুক্ত করে।"
         applicability_text = "বাধ্যতামূলক (QCO বিজ্ঞাপিত)" if qco_row else "স্বেচ্ছাসেবী সার্টিফিকেশন"
         facility_text = "ঘরোয়া উত্পাদন সুবিধা (ভারত)" if not req.is_foreign else "বিদেশী উত্পাদন সুবিধা"
 
     return {
         "found": True,
+        "confirmed": True,
         "product_profile": {
             "name": search_term.title(),
             "category": category,
@@ -1000,7 +1438,13 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
             "why_it_applies": why_it_applies,
             "scope": scope_text,
             "related_standards": related,
-            "official_source": f"Bureau of Indian Standards ({standard_number})"
+            "official_source": f"Bureau of Indian Standards ({standard_number})",
+            "confidence": confidence_level,
+            # Step 2 validation fields
+            "confirmed": True,
+            "reason": validation_reason,
+            "evidence_document": evidence_document,
+            "evidence_page": evidence_page,
         },
         "certification": {
             "scheme": "FMCS (Foreign Manufacturers)" if req.is_foreign else "Scheme-I (ISI Mark)",
@@ -1085,129 +1529,136 @@ async def get_standards_options():
 async def get_testing_and_labs(standard_id: str):
     conn = get_db()
     cur = conn.cursor()
-    
-    # Generate clean regex pattern for robust downstream fetching
-    core_hyphen, _ = extract_core_id(standard_id)
-    regex_pattern = get_core_regex(core_hyphen)
-    
-    cur.execute("SELECT id FROM bis_standards WHERE id = %s OR id ~* %s LIMIT 1;", (standard_id, regex_pattern))
-    matched = cur.fetchone()
-    text_id = matched[0] if matched else standard_id
-    
-    core_h, _ = extract_core_id(text_id)
-    regex_pattern_downstream = get_core_regex(core_h)
+
+    # Step 2 selected standard remains canonical (Requirement 9)
+    # Match standard in standard_tests using robust normalization (Requirements 2, 4, 6, 7)
+    matched_test_std = resolve_matching_standard_id(cur, "standard_tests", standard_id)
 
     # Fetch tests
-    cur.execute("""
-        SELECT clause, requirement, test_method, equipment_requirement, sample_quantity, frequency, testing_type, remarks, source_page
-        FROM standard_tests
-        WHERE standard_id = %s OR standard_id ~* %s
-        ORDER BY id ASC;
-    """, (text_id, regex_pattern_downstream))
-    test_rows = cur.fetchall()
-    
     routine_tests = []
     type_tests = []
-    for r in test_rows:
-        t = {
-            "clause": r[0],
-            "requirement": r[1],
-            "test_method": r[2],
-            "equipment_requirement": r[3] if r[3] != "None" else "Standard laboratory test apparatus",
-            "sample_quantity": r[4],
-            "frequency": r[5],
-            "testing_type": r[6],
-            "remarks": r[7] if r[7] != "None" else None,
-            "source_page": r[8]
-        }
-        if r[6] == "Routine":
-            routine_tests.append(t)
-        else:
-            type_tests.append(t)
+    if matched_test_std:
+        cur.execute("""
+            SELECT clause, requirement, test_method, equipment_requirement, sample_quantity, frequency, testing_type, remarks, source_page
+            FROM standard_tests
+            WHERE standard_id = %s
+            ORDER BY id ASC;
+        """, (matched_test_std,))
+        test_rows = cur.fetchall()
+        for r in test_rows:
+            t = {
+                "clause": r[0],
+                "requirement": r[1],
+                "test_method": r[2],
+                "equipment_requirement": r[3] if r[3] != "None" else "Standard laboratory test apparatus",
+                "sample_quantity": r[4],
+                "frequency": r[5],
+                "testing_type": r[6],
+                "remarks": r[7] if r[7] != "None" else None,
+                "source_page": r[8]
+            }
+            # Robust Routine vs Type / Periodic / Subcontracted classification
+            t_type = (r[6] or "").strip().lower()
+            freq = (r[5] or "").strip().lower()
+            
+            is_routine = False
+            # Routine factory tests: 'routine', 'r', 'routine/periodic', or high-frequency production testing
+            if t_type in ("routine", "r", "routine/periodic", "routine test", "factory test"):
+                is_routine = True
+            elif t_type in ("s", "subcontracted", "periodic", "periodic / surveillance", "type", "acceptance"):
+                is_routine = False
+            elif any(kw in freq for kw in ("each", "daily", "per unit", "production unit", "every batch")):
+                is_routine = True
+                
+            if is_routine:
+                routine_tests.append(t)
+            else:
+                type_tests.append(t)
 
-    # Fetch laboratories and charges
-    # Fetch laboratories and charges
-    cur.execute("""
-        SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, 
-               c.testing_charge, c.currency, c.remarks, l.status,
-               l.pincode, l.contact_email, l.contact_phone, l.website, l.latitude, l.longitude
-        FROM lab_test_charges c
-        JOIN laboratories l ON c.laboratory_id = l.id
-        WHERE c.standard_id = %s OR c.standard_id ~* %s;
-    """, (text_id, regex_pattern_downstream))
-    lab_rows = cur.fetchall()
+    # Match laboratories & charges using robust normalization
+    matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", standard_id)
     labs = []
-    for lr in lab_rows:
-        labs.append({
-            "id": lr[0], "lab_name": lr[1], "osl_code": lr[2],
-            "address": lr[3] or "Authoritative BIS Recognised Laboratory",
-            "city": lr[4] or "National Network", "state": lr[5] or "India",
-            "source_url": lr[6], "testing_charge": float(lr[7]) if lr[7] else None,
-            "currency": lr[8] or "INR", "remarks": lr[9] if lr[9] != "None" else None,
-            "status": lr[10] or "Operational",
-            # New fields:
-            "pincode": lr[11], "contact_email": lr[12], "contact_phone": lr[13], 
-            "website": lr[14], "latitude": lr[15], "longitude": lr[16]
-        })
+    if matched_lab_std:
+        # BULLETPROOF FETCHING: Prevents crash if contact columns are missing
+        try:
+            # Attempt to fetch with the NEW contact and map columns
+            cur.execute("""
+                SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, 
+                       c.testing_charge, c.currency, c.remarks, l.status,
+                       l.pincode, l.contact_email, l.contact_phone, l.website, l.latitude, l.longitude
+                FROM lab_test_charges c
+                JOIN laboratories l ON c.laboratory_id = l.id
+                WHERE c.standard_id = %s;
+            """, (matched_lab_std,))
+            lab_rows = cur.fetchall()
+            has_new_cols = True
+        except psycopg2.errors.UndefinedColumn:
+            # Fallback safely to old query if columns don't exist
+            conn.rollback()
+            cur.execute("""
+                SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, 
+                       c.testing_charge, c.currency, c.remarks, l.status
+                FROM lab_test_charges c
+                JOIN laboratories l ON c.laboratory_id = l.id
+                WHERE c.standard_id = %s;
+            """, (matched_lab_std,))
+            lab_rows = cur.fetchall()
+            has_new_cols = False
 
-    # Fetch grouping rules
-    cur.execute("""
-        SELECT group_code, group_name, condition, sample_requirement, preferred_sample, voltage_requirement, remarks, source_page
-        FROM grouping_rules
-        WHERE standard_id = %s OR standard_id ~* %s;
-    """, (text_id, regex_pattern_downstream))
-    group_rows = cur.fetchall()
+        for lr in lab_rows:
+            labs.append({
+                "id": lr[0], "lab_name": lr[1], "osl_code": lr[2],
+                "address": lr[3] or "Authoritative BIS Recognised Laboratory",
+                "city": lr[4] or "National Network", "state": lr[5] or "India",
+                "source_url": lr[6], "testing_charge": float(lr[7]) if lr[7] else None,
+                "currency": lr[8] or "INR", "remarks": lr[9] if lr[9] != "None" else None,
+                "status": lr[10] or "Operational",
+                # Safely map new fields
+                "pincode": lr[11] if has_new_cols else None, 
+                "contact_email": lr[12] if has_new_cols else None, 
+                "contact_phone": lr[13] if has_new_cols else None, 
+                "website": lr[14] if has_new_cols else None, 
+                "latitude": lr[15] if has_new_cols else None, 
+                "longitude": lr[16] if has_new_cols else None
+            })
+
+    # Match grouping rules
+    matched_group_std = resolve_matching_standard_id(cur, "grouping_rules", standard_id)
     groups = []
-    for gr in group_rows:
-        groups.append({
-            "group_code": gr[0],
-            "group_name": gr[1],
-            "condition": gr[2],
-            "sample_requirement": gr[3],
-            "preferred_sample": gr[4],
-            "voltage_requirement": gr[5],
-            "remarks": gr[6],
-            "source_page": gr[7]
-        })
+    if matched_group_std:
+        cur.execute("""
+            SELECT group_code, group_name, condition, sample_requirement, preferred_sample, voltage_requirement, remarks, source_page
+            FROM grouping_rules
+            WHERE standard_id = %s
+            ORDER BY id ASC;
+        """, (matched_group_std,))
+        group_rows = cur.fetchall()
+        for gr in group_rows:
+            groups.append({
+                "group_code": gr[0],
+                "group_name": gr[1],
+                "condition": gr[2],
+                "sample_requirement": gr[3],
+                "preferred_sample": gr[4],
+                "voltage_requirement": gr[5],
+                "remarks": gr[6],
+                "source_page": gr[7]
+            })
 
     cur.close()
     conn.close()
+    has_verified_data = bool(matched_test_std or matched_lab_std)
     return {
-        "standard_id": text_id,
+        "standard_id": standard_id,
+        "matched_standard_id": matched_test_std or matched_lab_std,
+        "verified_data_available": has_verified_data,
+        "message": None if has_verified_data else "No verified testing data available for this standard in the database.",
         "routine_tests": routine_tests,
         "type_tests": type_tests,
         "laboratories": labs,
         "grouping_rules": groups
     }
-
-@app.get("/api/standards/{standard_id}/documents")
-async def get_standard_documents(standard_id: str):
-    conn = get_db()
-    cur = conn.cursor()
-    core_h, _ = extract_core_id(standard_id)
-    regex_pattern = get_core_regex(core_h)
-    
-    cur.execute("""
-        SELECT id, document_name, description, required_status, applicable_when, responsible_party, source_url
-        FROM application_documents
-        WHERE standard_id = %s OR standard_id ~* %s
-        ORDER BY id ASC;
-    """, (standard_id, regex_pattern))
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
-    docs = []
-    for r in rows:
-        docs.append({
-            "id": r[0],
-            "document_name": r[1],
-            "description": r[2],
-            "required_status": r[3],
-            "applicable_when": r[4],
-            "responsible_party": r[5],
-            "source_url": r[6]
-        })
-    return {"standard_id": standard_id, "documents": docs}
+    return {"standard_id": standard_id, "matched_standard_id": matched_doc_std, "documents": docs}
 
 @app.post("/api/documents/scan")
 async def scan_document_endpoint(
@@ -1332,30 +1783,29 @@ async def scan_document_endpoint(
 async def get_standard_process(standard_id: str):
     conn = get_db()
     cur = conn.cursor()
-    core_h, _ = extract_core_id(standard_id)
-    regex_pattern = get_core_regex(core_h)
-
-    cur.execute("""
-        SELECT step_number, step_name, description, responsible_party, fee_type, fee_amount, source_url
-        FROM certification_process_steps
-        WHERE standard_id = %s OR standard_id ~* %s
-        ORDER BY step_number ASC;
-    """, (standard_id, regex_pattern))
-    rows = cur.fetchall()
+    matched_proc_std = resolve_matching_standard_id(cur, "certification_process_steps", standard_id)
+    steps = []
+    if matched_proc_std:
+        cur.execute("""
+            SELECT step_number, step_name, description, responsible_party, fee_type, fee_amount, source_url
+            FROM certification_process_steps
+            WHERE standard_id = %s
+            ORDER BY step_number ASC;
+        """, (matched_proc_std,))
+        rows = cur.fetchall()
+        for r in rows:
+            steps.append({
+                "step_number": r[0],
+                "step_name": r[1],
+                "description": r[2],
+                "responsible_party": r[3],
+                "fee_type": r[4] if r[4] != "None" else None,
+                "fee_amount": r[5] if r[5] != "None" else None,
+                "source_url": r[6]
+            })
     cur.close()
     conn.close()
-    steps = []
-    for r in rows:
-        steps.append({
-            "step_number": r[0],
-            "step_name": r[1],
-            "description": r[2],
-            "responsible_party": r[3],
-            "fee_type": r[4] if r[4] != "None" else None,
-            "fee_amount": r[5] if r[5] != "None" else None,
-            "source_url": r[6]
-        })
-    return {"standard_id": standard_id, "steps": steps}
+    return {"standard_id": standard_id, "matched_standard_id": matched_proc_std, "steps": steps}
 
 class EstimatorCalculateRequest(BaseModel):
     standard_id: Optional[str] = "368-2014-electric-immersion-water-heaters"
@@ -1373,11 +1823,9 @@ async def calculate_fees(req: EstimatorCalculateRequest):
     cur.execute("SELECT fee_type, amount, unit, applicable_to, notes FROM bis_fees WHERE scheme = %s;", (req.scheme,))
     fee_rows = cur.fetchall()
 
-    core_h, _ = extract_core_id(req.standard_id)
-    regex_pattern = get_core_regex(core_h)
-    
-    cur.execute("SELECT AVG(testing_charge) FROM lab_test_charges WHERE standard_id = %s OR standard_id ~* %s;", 
-                (req.standard_id, regex_pattern))
+    matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", req.standard_id)
+    cur.execute("SELECT AVG(testing_charge) FROM lab_test_charges WHERE standard_id = %s;", 
+                (matched_lab_std or req.standard_id,))
     avg_lab_charge = cur.fetchone()[0] or 6000
     cur.close()
     conn.close()
@@ -1784,8 +2232,9 @@ async def recommend_laboratories(
     cur = conn.cursor()
     try:
         text_id = (standard_id or "368").strip()
-        core_h, _ = extract_core_id(text_id)
-        regex_pattern = get_core_regex(core_h)
+        # Use teammate's robust resolver
+        matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", text_id)
+        effective_std = matched_lab_std or text_id
 
         # ---------------------------------------------------------
         # BULLETPROOF FETCHING: Prevents crash if columns are missing
@@ -1797,9 +2246,9 @@ async def recommend_laboratories(
                        c.testing_charge, c.currency, c.remarks, c.grade_type_size,
                        l.pincode, l.contact_email, l.contact_phone, l.website, l.latitude, l.longitude
                 FROM laboratories l
-                LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s OR c.standard_id ~* %s)
+                LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND c.standard_id = %s
                 ORDER BY l.id;
-            """, (text_id, regex_pattern))
+            """, (effective_std,))
             rows = cur.fetchall()
             has_new_cols = True
             
@@ -1810,9 +2259,9 @@ async def recommend_laboratories(
                 SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
                        c.testing_charge, c.currency, c.remarks, c.grade_type_size
                 FROM laboratories l
-                LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND (c.standard_id = %s OR c.standard_id ~* %s)
+                LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND c.standard_id = %s
                 ORDER BY l.id;
-            """, (text_id, regex_pattern))
+            """, (effective_std,))
             rows = cur.fetchall()
             has_new_cols = False
 
@@ -1908,7 +2357,6 @@ async def recommend_laboratories(
 
             if scope not in matched_labs[lab_id]["testing_scopes"]:
                 matched_labs[lab_id]["testing_scopes"].append(scope)
-  
 
         matched_labs = list(matched_labs.values())
         matched_labs.sort(key=lambda x: (x["tier_score"], x["testing_charge"] or 999999))

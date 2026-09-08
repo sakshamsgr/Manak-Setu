@@ -51,8 +51,8 @@ def process_and_index():
     print("Checking Supabase Storage bucket for PDF files...")
     files = supabase.storage.from_(BUCKET_NAME).list()
     
-    # 2. Check which files are already indexed in PostgreSQL
-    cursor.execute("SELECT id FROM bis_standards;")
+    # 2. Check which files are already indexed with embeddings in PostgreSQL
+    cursor.execute("SELECT DISTINCT standard_id FROM standard_chunks WHERE embedding IS NOT NULL;")
     indexed_standards = {row[0] for row in cursor.fetchall()}
 
     for file_obj in files:
@@ -63,7 +63,7 @@ def process_and_index():
         standard_id = filename.rsplit('.', 1)[0]
 
         if standard_id in indexed_standards:
-            print(f"Skipping '{filename}' (already indexed).")
+            print(f"Skipping '{filename}' (already indexed with embeddings).")
             continue
 
         print(f"\nNew file detected: '{filename}'. Downloading from cloud...")
@@ -77,8 +77,11 @@ def process_and_index():
         # Register standard in metadata table
         cursor.execute("""
             INSERT INTO bis_standards (id, title, year, pdf_url)
-            VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO NOTHING;
+            VALUES (%s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET pdf_url = EXCLUDED.pdf_url;
         """, (standard_id, standard_id.replace("_", " "), 2026, public_url))
+        
+        # Clear any partial chunks to avoid duplicates
+        cursor.execute("DELETE FROM standard_chunks WHERE standard_id = %s;", (standard_id,))
         conn.commit()
 
         # 4. Extract text page-by-page

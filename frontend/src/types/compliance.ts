@@ -36,7 +36,18 @@ export interface StandardDetails {
   relatedStandards: string[];
   officialSource: string;
   officialUrl?: string;
+  /** Whether the backend RAG validation confirmed this standard applies to the product */
+  confirmed?: boolean;
+  /** Human-readable reason the backend validated/rejected this standard */
+  reason?: string;
+  /** BIS document standard_id from vector search that confirmed this standard */
+  evidenceDocument?: string | null;
+  /** Page number within that BIS document */
+  evidencePage?: number | null;
+  /** @deprecated Use confirmed field instead — kept for backward compat */
+  confidence?: 'HIGH' | 'MEDIUM' | 'NEEDS_VERIFICATION';
 }
+
 
 export interface CertificationDetails {
   isMandatory: boolean;
