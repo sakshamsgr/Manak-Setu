@@ -34,6 +34,8 @@ interface ProductContextType {
   setActiveStep: (step: number) => void;
   updateProductProfile: (updated: Partial<ProductProfile>) => void;
   startJourney: (query: string, file?: File) => Promise<void>;
+  retryLastJourney?: () => Promise<void>;
+  clearError: () => void;
   askContextualAI: (question: string, file?: File, signal?: AbortSignal) => Promise<{ reply: string; citations: Citation[] }>;
   resetJourney: () => void;
   saveJourney: () => Promise<{ success: boolean; message: string }>;
@@ -54,7 +56,7 @@ const defaultProfile: ProductProfile = {
 const ProductContext = createContext<ProductContextType | undefined>(undefined);
 
 export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const { user } = useAuth(); // FIX: Hooked into AuthContext
   
   const [productProfile, setProductProfile] = useState<ProductProfile>(defaultProfile);
@@ -66,6 +68,7 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
   // FIX: Made sessionId mutable so we can regenerate it on logout
   const [sessionId, setSessionId] = useState<string>(() => `product_session_${Date.now()}`);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
+  const lastQueryRef = useRef<{ query: string; file?: File } | null>(null);
 
   useEffect(() => {
     return () => {
@@ -91,6 +94,8 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (!trimmed && !file) return;
 
     if (isLoading) return;
+
+    lastQueryRef.current = { query: trimmed, file };
 
     if (activeAbortControllerRef.current) {
       activeAbortControllerRef.current.abort();
@@ -269,10 +274,14 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         ...fileCitations,
         {
           document: resolved.standard.title,
+          title: resolved.standard.title,
+          document_title: resolved.standard.title,
           page: 1,
+          page_number: 1,
           text: resolved.standard.scope,
           standard_id: resolved.standard.standard_number,
-          page_number: 1,
+          url: resolved.standard.source_url || (resolved.standard.standard_number ? `https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/knowyourstandards/indian_standards/isdetails?is_no=${encodeURIComponent(resolved.standard.standard_number.replace(/\s+/g, ''))}` : 'https://www.bis.gov.in'),
+          source_url: resolved.standard.source_url || 'https://www.bis.gov.in',
         }
       ];
 
@@ -355,24 +364,14 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
       console.error('Failed to start product certification guide:', err);
       const isTimeout = err instanceof ApiTimeoutError || err.name === 'ApiTimeoutError' || err.isTimeout;
       const msg = isTimeout
-        ? 'AI response is taking longer than expected. Please try again.'
-        : 'Unable to connect right now. Please try again.';
+        ? (t('common.aiTimeout') || 'AI response is taking longer than expected. Please try again.')
+        : (t('common.apiUnavailable') || 'Unable to connect right now. Please try again.');
       setErrorMessage(msg);
-
-      const fallbackData = generateProductCertificationGuideData(
-        trimmed,
-        `⚠️ **${msg}**`,
-        [],
-        file?.name,
-        productProfile
-      );
-      setGuideData(fallbackData);
-      setActiveStep(1);
     } finally {
       setIsLoading(false);
       activeAbortControllerRef.current = null;
     }
-  }, [sessionId, language, productProfile, isLoading]);
+  }, [sessionId, language, productProfile, isLoading, t]);
 
   const askContextualAI = useCallback(async (
     question: string, 
@@ -381,11 +380,20 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
   ): Promise<{ reply: string; citations: Citation[] }> => {
     const currentProductName = productProfile.name || guideData?.productProfile.name || 'Product';
     const contextObj = {
-      product_name: currentProductName,
+      page: 'product-guide',
+      tab: 'product-guide',
+      stage: activeStep,
       active_step: activeStep,
+      product: currentProductName,
+      product_name: currentProductName,
+      standardId: guideData?.standardDetails?.code,
+      standard_id: guideData?.standardDetails?.code,
+      standardName: guideData?.standardDetails?.title,
+      standard_name: guideData?.standardDetails?.title,
       industry_scale: productProfile.industryScale,
       sub_type: productProfile.subType,
       technical_specs: productProfile.technicalSpecs,
+      location: productProfile.manufacturingLocation,
     };
 
     if (file) {
@@ -404,9 +412,24 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
   }, [sessionId, language, productProfile, guideData, activeStep]);
 
   const resetJourney = useCallback(() => {
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+      activeAbortControllerRef.current = null;
+    }
     setGuideData(null);
     setProductProfile(defaultProfile);
     setActiveStep(1);
+    setErrorMessage(null);
+    lastQueryRef.current = null;
+  }, []);
+
+  const retryLastJourney = useCallback(async () => {
+    if (lastQueryRef.current) {
+      await startJourney(lastQueryRef.current.query, lastQueryRef.current.file);
+    }
+  }, [startJourney]);
+
+  const clearError = useCallback(() => {
     setErrorMessage(null);
   }, []);
 
@@ -546,6 +569,8 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setActiveStep,
         updateProductProfile,
         startJourney,
+        retryLastJourney,
+        clearError,
         askContextualAI,
         resetJourney,
         saveJourney,

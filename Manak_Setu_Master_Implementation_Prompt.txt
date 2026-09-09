@@ -1,0 +1,822 @@
+MANAK SETU — MASTER IMPLEMENTATION PROMPT
+
+Version: 1.0
+Project: Manak Setu (मानक सेतु)
+SIH Problem Statement: 26107 — AI-powered Intelligent Assistant for
+Indian Standards and BIS Services for Industries and Consumers
+
+0. PURPOSE
+
+This is the master implementation prompt for the existing Manak Setu
+project.
+
+This is NOT a greenfield project and NOT permission to rebuild the
+application from scratch.
+
+The existing application must be inspected first and improved safely.
+
+Expected architecture to verify: - React + TypeScript + Vite + Tailwind
+CSS frontend - Python + FastAPI backend - Google GenAI/Gemini - Supabase
+PostgreSQL + pgvector + Storage - custom authentication - RAG /
+embeddings / chat history - Product Guide - Fee Estimator - Consumer
+Help - Hallmarking - Testing & Labs - document upload/scanning - PWA -
+persistent Manak Setu AI Assistant - i18n
+
+The current code and current Supabase database are the source of truth.
+
+1. ABSOLUTE RULES
+
+Inspect before coding
+
+Before modifying anything, inspect and understand: - complete frontend
+structure and routes - Navbar and Footer - all major pages/components -
+Product Guide - current Hallmarking implementation - Consumer Help -
+Testing & Labs - Documents - Application - Fee Estimator - AI
+Assistant - authentication - i18n - PWA - frontend API/service layer -
+backend entry point and imported modules - FastAPI routes and models -
+Supabase connection and queries - RAG and Hybrid RAG - embeddings -
+Gemini generation - query rewriting - chat history - citations -
+document upload/scanning - current database schema, relationships,
+indexes and RLS
+
+Do not rely blindly on old documentation.
+
+Do not delete working logic
+
+If something currently works, KEEP IT.
+
+Do not: - rewrite large parts unnecessarily - refactor unrelated code -
+remove working APIs - remove working database logic - replace working
+RAG blindly - remove Testing & Labs functionality - remove Google Maps
+logic - remove phone/email logic - remove existing authentication -
+remove useful Hallmarking logic
+
+Only remove/move functionality explicitly requested in this prompt.
+
+Before removing anything, trace all dependencies and usages.
+
+No fake data
+
+Never invent: - BIS standards / IS numbers - QCOs - fees -
+laboratories - BIS-recognized A&H Centres - phone numbers - email
+addresses - addresses - map locations - legal/regulatory requirements -
+certification requirements - testing requirements - document
+requirements - official BIS URLs - citations
+
+If verified data is unavailable, show an honest unavailable/no-data
+state or use a verified official BIS source.
+
+Never claim something is verified when the system did not actually
+verify it.
+
+Backend is the authority
+
+Never invent API contracts.
+
+Trace: Frontend → API → FastAPI → Supabase → response → UI.
+
+Verify actual request/response structures before changing frontend
+consumers.
+
+Database safety
+
+Do not: - drop tables - drop columns - rename tables/columns - delete
+data - migrate authentication - merge UUID/text structures blindly -
+change RLS blindly
+
+If a schema change is genuinely necessary, first trace dependencies and
+make the smallest safe change.
+
+Authentication safety
+
+Preserve the current custom authentication architecture.
+
+Do not migrate to Supabase Auth.
+
+Do not expose passwords, JWT secrets, service-role keys or other secrets
+to the frontend.
+
+Git/GitHub
+
+NEVER: - git commit - git push - create a GitHub PR - publish changes -
+modify Git history automatically
+
+The user handles Git manually.
+
+Git status/history may be inspected only when useful.
+
+Phase execution
+
+Use:
+
+INSPECT → VERIFY → MAP → PLAN → IMPLEMENT ONE PHASE → TEST → REGRESSION
+→ REPORT → NEXT PHASE
+
+Do not implement every phase in one pass.
+
+If a phase fails, fix it before continuing.
+
+2. PHASE 0 — COMPLETE CODE / FRONTEND / BACKEND / SUPABASE AUDIT
+
+Start with Phase 0 ONLY.
+
+Map: 1. frontend architecture 2. backend architecture 3. Supabase
+architecture 4. authentication 5. RAG 6. Hybrid RAG 7. Gemini/LLM
+generation 8. chat history 9. i18n 10. PWA 11. Product Guide 12. Testing
+& Labs 13. Documents 14. Application 15. Consumer Help 16. Hallmarking
+17. Fee Estimator 18. API contracts 19. current broken/partial features
+20. files/components that should not be unnecessarily changed
+
+Inspect the actual current database. Relevant tables may include: -
+standards - bis_standards - standard_chunks - documents -
+standard_documents - standard_tests - qcos - qco_standards - bis_fees -
+laboratories - lab_test_charges - grouping_rules -
+certification_process_steps - application_documents -
+product_classifications - users - auth_otps - chat_history
+
+These are references only. Verify what currently exists and what is
+used.
+
+Pay special attention to UUID/text identifiers, foreign keys, RLS,
+indexes, embeddings and relationships.
+
+Phase 0 must report: - what works - what is partial - what is broken -
+what is missing - what can be reused - what requires backend changes -
+what can safely remain frontend-only
+
+3. PHASE 1 — API AND DATABASE CONTRACT VERIFICATION
+
+Verify actual existing APIs where present, including: - GET
+/api/status - POST /api/product-guide/resolve - GET
+/api/standards/{standard_id}/testing-and-labs - GET
+/api/standards/{standard_id}/documents - GET
+/api/standards/{standard_id}/process - POST /api/estimator/calculate -
+GET /api/chat/history - POST /api/chat/history - GET
+/api/standards/options - GET /api/consumer/verify - POST
+/api/documents/scan - POST /chat
+
+Do not assume these contracts are unchanged.
+
+Record actual methods, payloads, responses, authentication and errors.
+
+4. PHASE 2 — SEPARATE HALLMARKING PAGE
+
+There is already Hallmarking inside Consumer Help.
+
+Create a separate top-level Hallmarking page in the Navbar.
+
+Remove Hallmarking from Consumer Help ONLY as requested.
+
+Do not delete reusable Hallmarking logic. Safely extract/reuse it.
+
+The main Navbar must contain the existing main pages plus: - Product
+Guide - Fee Estimator - Consumer Help - Hallmarking - Info/Guide
+
+Do not disturb unrelated Navbar functionality.
+
+Hallmarking page structure
+
+Use this conceptual structure:
+
+HALLMARKING
+Gold & Silver • BIS Guidance
+
+“What do you want to do?”
+
+CONSUMER Check my hallmark [Start Check]
+
+BUSINESS Get my jewellery hallmarked [Start Guide]
+
+↓
+
+GOLD / SILVER
+
+↓
+
+Step-by-step guidance: - What to check - What to do - Where to go -
+Official BIS source - Ask Manak Setu AI
+
+Consumer journey
+
+Support Gold and Silver safely.
+
+Help users understand verified information about: - hallmarking -
+purity/fineness - relevant markings - HUID where applicable -
+verification - what to do if verification cannot be completed -
+suspicious article guidance - official testing/verification routes
+
+Reuse existing consumer verification functionality where appropriate.
+
+Never produce a fake Verified result.
+
+Manak Setu must not pretend to be the official BIS verification service.
+
+Business journey
+
+Provide a practical step-by-step guide for
+jewellers/businesses/manufacturers who need to get jewellery hallmarked.
+
+Where verified information supports it, guide through: 1. applicable
+requirements 2. registration/eligibility 3. BIS registration where
+applicable 4. appropriate BIS-recognized Assaying & Hallmarking Centre
+5. jewellery submission 6. assaying/testing 7. hallmarking/HUID process
+8. receiving hallmarked jewellery 9. verification/documentation 10.
+sale/readiness guidance where applicable
+
+Do not invent steps.
+
+Gold and Silver must be treated separately where requirements differ.
+
+A&H Centre rule
+
+Existing Testing & Labs has location discovery, Google Maps, phone and
+email logic. KEEP IT.
+
+If actual verified A&H Centre data exists, use it.
+
+If only generic laboratory data exists, DO NOT label generic
+laboratories as A&H Centres and do not fabricate A&H Centre records.
+
+If needed, use a verified official BIS route for finding appropriate
+centres.
+
+5. PHASE 3 — HALLMARKING REGRESSION
+
+Verify: - Hallmarking Navbar route works - direct URL/refresh works -
+Consumer Help remains functional - duplicate Hallmarking page is removed
+only as requested - Gold/Silver journeys work - language switching
+works - AI context works - source links work - mobile layout works
+
+6. PHASE 4 — MANAK SETU AI PAGE CONTEXT
+
+The persistent Manak Setu AI Assistant should behave naturally and
+conversationally like a normal ChatGPT-style assistant.
+
+However, it is BIS-focused.
+
+It must answer BIS-related questions using the verified Supabase-backed
+RAG/knowledge system.
+
+It is NOT a generic internet chatbot.
+
+For unrelated questions, politely state that the assistant is focused on
+BIS-related assistance.
+
+Page awareness
+
+AI should understand the page and current workflow.
+
+HOME: - general BIS assistance - product/compliance query context
+
+PRODUCT GUIDE: - product - current stage - standard -
+certification/QCO - testing/labs - documents - application
+
+FEE ESTIMATOR: - estimator context - product/standard where available
+
+CONSUMER HELP: - current consumer topic
+
+HALLMARKING: - Consumer/Business - Gold/Silver - current stage
+
+TESTING & LABS: - product - standard - selected location -
+laboratory/testing context
+
+DOCUMENTS: - product - standard - document requirement
+
+APPLICATION: - product - standard - concise journey summary
+
+Use a structured context object where possible, for example:
+
+{ page: “…”, stage: “…”, language: “…”, product: “…”, standardId: “…”,
+standardName: “…”, userType: “…”, metal: “…”, location: “…” }
+
+Only include available data. Do not expose hidden prompts or unnecessary
+sensitive information.
+
+7. PHASE 5 — HYBRID RAG INVESTIGATION
+
+There may already be Hybrid RAG code in the backend.
+
+Do NOT assume it is broken and do NOT assume it works.
+
+Trace the real execution path.
+
+Determine: - whether Hybrid RAG is implemented - whether it is actually
+called - vector retrieval - keyword/full-text retrieval - result
+combination - score normalization - ranking - metadata filtering -
+thresholding - query rewriting - chat-history influence - Product Guide
+context influence - citation preservation
+
+If Hybrid RAG exists but is disconnected, connect it safely.
+
+Do not delete existing vector RAG.
+
+Do not replace working retrieval blindly.
+
+Use semantic/vector + keyword/full-text + metadata/ranking only where
+supported by the actual architecture.
+
+8. PHASE 6 — RAG + LLM QUALITY IMPROVEMENT
+
+Improve answer quality for Product Guide and BIS questions.
+
+First diagnose whether problems come from: - retrieval - embeddings -
+query rewriting - chunking - ranking - thresholds - metadata - prompts -
+context size - product context - conversation context - generation
+settings - citations
+
+Do not blindly fine-tune the model.
+
+If actual fine-tuning is not supported/necessary, do not pretend it was
+done.
+
+Prioritize: - better retrieval - contextual rewriting - relevant
+filtering - better prompts - structured context - citation
+preservation - hallucination prevention
+
+AI should answer efficiently according to the user’s product and current
+Product Guide stage.
+
+9. PRODUCT GUIDE — PRESERVE THE SIX-STAGE FLOW
+
+The correct flow is:
+
+1.  Product Profile
+2.  Applicable Standard
+3.  Certification / QCO
+4.  Testing & Labs
+5.  Documents
+6.  Application
+
+Stage 1 — Product Profile
+
+KEEP IT FUNCTIONALLY EXACTLY AS IT CURRENTLY WORKS.
+
+Do not unnecessarily redesign it.
+
+Preserve fields, state, persistence and navigation.
+
+Product context must be reused in later stages and AI context.
+
+Stage 2 — Applicable Standard
+
+Show valid standards for the selected product using authoritative
+backend/database data.
+
+Trace current logic first.
+
+Improve relevance/accuracy/duplicate handling only where safely
+supported.
+
+Never fabricate standards.
+
+Stage 3 — Certification / QCO
+
+Use verified backend/database/RAG information.
+
+Distinguish, where supported: - standard applicability - QCO coverage -
+certification requirement - mandatory vs voluntary status
+
+Do not make generic legal claims.
+
+Stage 4 — Testing & Labs
+
+This currently works nicely.
+
+DO NOT DAMAGE IT.
+
+Preserve: - laboratory discovery - location logic - Google Maps - phone
+links - email links - testing relationships - existing laboratory
+functionality
+
+Verify that labs relate to the selected product/standard.
+
+Improve only where useful and supported: - location clarity -
+nearest-lab ranking - testing capability - test categories -
+loading/error/empty states - source information
+
+Never fabricate laboratories.
+
+Stage 5 — Documents — IMPORTANT
+
+Step 5 is currently NOT in working condition.
+
+MAKE STEP 5 WORKING.
+
+There is an upload button for each document.
+
+Current problem: an arbitrary document can result in “Verified”.
+
+Fix this properly.
+
+Trace: Frontend → upload → actual endpoint → storage → scan/process →
+verification logic → state/database → UI.
+
+Determine what the current backend actually means by Verified.
+
+Upload success MUST NOT automatically equal verification.
+
+If real verification exists: make the UI reflect the real verification
+result.
+
+If semantic verification does not actually exist: use an honest state
+such as: - Uploaded - Verification Pending - Scanning - Failed or
+equivalent based on actual capability.
+
+Do NOT claim Verified unless the backend actually verifies the document
+against the relevant requirement.
+
+Keep document upload.
+
+Keep useful categories/descriptions.
+
+Status/progress must come from real state.
+
+Test: - correct document - unrelated/arbitrary document - invalid file -
+unsupported extension - oversized file - scan failure - backend failure
+
+Do not fake success.
+
+Stage 6 — Application
+
+KEEP the existing direct official BIS application link.
+
+Add a simple summary of the journey completed for the selected product:
+
+Product → Applicable Standard → Certification/QCO → Testing & Labs →
+Documents → Application
+
+Show concise results only.
+
+Do not dump all previous page content here.
+
+10. PHASE 7 — PRODUCT GUIDE AI INTEGRATION
+
+AI context should follow the current stage:
+
+Stage 1: Product Profile
+
+Stage 2: Product + standards
+
+Stage 3: Product + standard + certification/QCO
+
+Stage 4: Product + standard + testing/labs
+
+Stage 5: Product + standard + document requirements
+
+Stage 6: Product + concise completed journey
+
+Current-stage information should take priority over unrelated retrieval.
+
+11. PHASE 8 — CHAT HISTORY LANGUAGE
+
+Current issue: new AI output can follow the selected language, but
+messages already present in chat history/chat box do not properly change
+language when the user switches language.
+
+Required: when language changes, visible existing conversation content
+should also be presented appropriately in the selected language.
+
+Do NOT destructively overwrite original stored messages.
+
+Choose the safest architecture based on the current implementation:
+presentation-time translation, language variants, safe caching, or
+another appropriate method.
+
+Do not incorrectly translate: - IS numbers - clause numbers - official
+names - technical identifiers - citations - numerical values
+
+Verify supported English, Hindi and Bengali behavior.
+
+12. PHASE 9 — FOOTER / STATIC i18n
+
+Footer content currently does not change language.
+
+Inspect the existing i18n implementation.
+
+Use the existing translation system. Do not create a second i18n
+framework.
+
+Move hardcoded user-visible Footer strings into translation resources.
+
+Also audit major static UI strings: - Navbar - headings - buttons -
+placeholders - loading - errors - empty states - tooltips -
+accessibility labels - modals
+
+Technical identifiers and official names must remain accurate.
+
+13. PHASE 10 — AI LANGUAGE
+
+The selected language must be passed to the backend AI.
+
+AI should: - answer in selected language - understand supported user
+languages - preserve BIS terminology - preserve
+standards/numbers/citations - translate explanatory text naturally
+
+Do not incorrectly translate technical identifiers.
+
+14. PHASE 11 — PWA / INSTALL APPLICATION
+
+PWA/App installation is currently not working.
+
+Inspect first: - manifest - icons - service worker - registration -
+Vite/PWA configuration - installability - start_url - scope - display -
+HTTPS/browser requirements - caching - update behavior - routing
+
+Find the actual cause and make the minimum safe fix.
+
+Verify: - supported desktop installation - supported mobile
+installation - launch after installation - icons - refresh - routing -
+service worker - API requests - stale-cache behavior
+
+Do not claim native APK/iOS functionality unless it exists.
+
+The goal is a working PWA installation experience.
+
+15. PHASE 12 — INFO / GUIDE PAGE
+
+Create a separate hardcoded Information / Guide page.
+
+IMPORTANT: This page must appear in the Navbar similarly to the other
+main pages:
+
+-   Product Guide
+-   Fee Estimator
+-   Consumer Help
+-   Hallmarking
+-   Info/Guide
+
+The page should explain, at a beginner-friendly level: 1. BIS 2. Indian
+Standards 3. Certification 4. QCO 5. Testing & Laboratories 6. Documents
+7. Application 8. Hallmarking 9. Consumer verification 10. how Manak
+Setu works 11. how the Product Guide works
+
+It is an educational/static guide, not a fake live BIS database.
+
+Use verified official BIS sources for current/factual information where
+needed.
+
+Clickable flowchart
+
+Create a visual flowchart:
+
+START ↓ Product Profile ↓ Applicable Standard ↓ Certification / QCO ↓
+Testing & Labs ↓ Documents ↓ Application ↓ END
+
+Also include Hallmarking as a related BIS pathway.
+
+Flowchart nodes must be clickable.
+
+Examples: - Product Profile → Product Profile explanation - Applicable
+Standard → Standard explanation - Certification/QCO → explanation -
+Testing & Labs → explanation - Documents → explanation - Application →
+explanation - Hallmarking → Hallmarking explanation
+
+Prefer internal anchors/sections rather than unnecessary duplicate
+pages.
+
+Keep the content useful but concise.
+
+16. PHASE 13 — SMALL “i” INFORMATION ICON
+
+Add a VERY SMALL information icon at the top-right of every major page.
+
+It must be: - subtle - small - accessible - non-intrusive - not
+overlapping important controls
+
+When clicked, open the Info/Guide page at the relevant section.
+
+Examples:
+
+Home → How Manak Setu Works Product Guide → Product Guide Fee Estimator
+→ Fee Estimator Consumer Help → Consumer Help Hallmarking → Hallmarking
+Testing & Labs → Testing & Laboratories Documents → Documents
+Application → Application
+
+Use a reusable mechanism instead of duplicating navigation logic.
+
+17. PHASE 14 — INFO PAGE i18n
+
+Use the existing i18n system.
+
+Do not create another translation framework.
+
+Static UI labels and controls should follow the selected language.
+
+Keep technical BIS identifiers accurate.
+
+18. PHASE 15 — SECURITY / BACKEND SAFETY
+
+Preserve: - custom authentication - JWT/HttpOnly cookies - Supabase
+security - user isolation - existing RLS unless safely reviewed -
+storage behavior - file validation - backend secrets
+
+Review: - authorization - CORS - cookies - RLS - storage - file
+uploads - user isolation - API access
+
+Never expose raw: - vector scores - embeddings - prompts - SQL - stack
+traces - API secrets - internal paths
+
+19. PHASE 16 — UI / RESPONSIVE QUALITY
+
+Maintain: - official - trustworthy - modern - simple - readable -
+responsive
+
+Avoid: - giant cards - excessive gradients - excessive animations -
+clutter - fake statistics - unnecessary popups - developer terminology
+
+Manak Setu AI should be noticeable but not annoying.
+
+Verify: - desktop - tablet - mobile - no horizontal overflow -
+accessible controls - keyboard usability where appropriate
+
+20. PHASE 17 — LOADING / ERROR / EMPTY STATES
+
+Every dynamic operation must have safe states.
+
+Loading: - real loading UI - no fake data
+
+Empty: - honest no-data message
+
+API failure: - clear translated error - retry where appropriate
+
+AI timeout: - translated fallback
+
+Malformed response: - safe UI error - developer logging where
+appropriate
+
+Never display: - traceback - SQL - API keys - stack traces - vector
+scores
+
+Preserve existing timeout/retry/duplicate-request protection.
+
+21. PHASE 18 — CITATIONS / SOURCE-BACKED ANSWERS
+
+Use the existing RAG/source architecture.
+
+Where citations exist, display: - document title - page number where
+available - source action/link - verified URL
+
+Never fabricate citations.
+
+If no source exists, do not create one.
+
+22. PHASE 19 — COMPLETE REGRESSION TESTING
+
+Test:
+
+HOME - loading - navigation - language - AI - i icon
+
+PRODUCT GUIDE - Product Profile - Applicable Standard -
+Certification/QCO - Testing & Labs - Documents - Application -
+persistence - AI context
+
+TESTING & LABS - location - lab data - maps - phone - email -
+product/standard relation
+
+DOCUMENTS - upload - scan - actual verification - arbitrary document
+does not become falsely verified - invalid file - unsupported file -
+oversized file - failure states
+
+APPLICATION - official BIS application link - concise journey summary
+
+HALLMARKING - Navbar - Consumer - Business - Gold - Silver -
+verification - business guide - official sources - AI context - no
+duplicate Consumer Help page
+
+CONSUMER HELP - all remaining features - no broken Hallmarking
+references
+
+FEE ESTIMATOR - existing behavior unchanged
+
+AI - BIS-only scope - Supabase/RAG-backed factual answers - contextual
+answers - citations - chat history - language - page awareness
+
+i18n - English - Hindi - Bengali - Footer - Navbar - static content -
+existing chat messages
+
+PWA - installation - manifest - service worker - launch - refresh -
+routing - API behavior
+
+INFO/GUIDE - Navbar - flowchart - clickable nodes - correct sections - i
+icons - contextual navigation
+
+23. PHASE 20 — AI QUALITY TESTING
+
+Test realistic questions:
+
+Product Guide: “What standard applies to my product?”
+
+Certification: “Is certification mandatory?”
+
+QCO: “Is this covered by a QCO?”
+
+Testing: “Which laboratory can test this?”
+
+Documents: “What documents do I need?”
+
+Application: “What have I completed?”
+
+Hallmarking Consumer: “How can I check my hallmark?”
+
+Hallmarking Business: “I have jewellery that is not hallmarked. What
+should I do?”
+
+Also test follow-up questions requiring previous context.
+
+Verify: - relevant retrieval - relevant answer - product context -
+standard context - current-stage context - citations - no
+hallucination - no unrelated chunks dominating
+
+24. PHASE 21 — BUILD / FINAL VERIFICATION
+
+Run appropriate: - frontend build - TypeScript/type checks - backend
+tests - API tests - integration tests - PWA checks - regression tests
+
+Do not disable tests to make them pass.
+
+Do not hide errors.
+
+Fix failures introduced by implementation.
+
+25. REQUIRED PHASE REPORT
+
+At the end of each phase report:
+
+PHASE: STATUS: PASS / BLOCKED / NEEDS FIX
+
+1.  What was inspected
+2.  What existed
+3.  What changed
+4.  Files changed
+5.  APIs changed, if any
+6.  Database changes, if any
+7.  Tests executed
+8.  Test results
+9.  Regression result
+10. Remaining risks
+11. Next phase
+
+Do not claim a phase is complete unless it actually passes.
+
+26. FINAL DEFINITION OF DONE
+
+[ ] Complete codebase inspected first [ ] Current Supabase schema
+inspected [ ] API contracts verified [ ] Existing RAG traced [ ] Hybrid
+RAG status verified [ ] Existing working logic preserved [ ] No
+unnecessary files deleted [ ] Hallmarking has a separate Navbar page [ ]
+Hallmarking removed from Consumer Help only as requested [ ] Hallmarking
+Consumer journey works [ ] Hallmarking Business journey works [ ]
+Gold/Silver handled safely [ ] No fake Hallmarking data [ ] Testing &
+Labs remains functional [ ] Google Maps remains functional [ ]
+Phone/email links remain functional [ ] A&H Centre data is never
+fabricated [ ] Product Profile remains functionally unchanged [ ]
+Applicable Standard works [ ] Certification/QCO works [ ] Testing & Labs
+works [ ] Step 5 Documents works [ ] Upload does not automatically mean
+Verified [ ] Actual verification capability is represented honestly [ ]
+Application retains official BIS link [ ] Application has concise
+journey summary [ ] AI understands major page contexts [ ] AI is
+BIS-focused [ ] AI factual knowledge comes from Supabase-backed RAG [ ]
+Hybrid RAG is connected if appropriate after verification [ ] RAG
+quality is improved safely [ ] Product Guide AI is stage-aware [ ]
+Existing chat history can display appropriately in selected language [ ]
+Footer i18n works [ ] Static i18n works [ ] AI language works [ ] PWA
+installation works where supported [ ] Info/Guide exists [ ] Info/Guide
+appears in Navbar [ ] Flowchart exists [ ] Flowchart nodes are clickable
+[ ] Small i icon exists on every major page [ ] i icon opens the
+relevant guide section [ ] Responsive UI works [ ] Authentication still
+works [ ] Supabase security preserved [ ] No frontend secrets exposed [
+] No fake BIS information [ ] No raw backend leakage [ ] Frontend build
+passes [ ] Backend tests pass [ ] Regression tests pass [ ] No Git
+commit created [ ] No Git push performed [ ] No GitHub PR created
+
+27. FINAL EXECUTION COMMAND
+
+START WITH PHASE 0 ONLY.
+
+Do NOT implement Phase 1+ until Phase 0 audit is complete.
+
+The goal is to improve the existing Manak Setu system, not recreate it.
+
+Fundamental workflow:
+
+INSPECT → VERIFY → MAP → IMPLEMENT MINIMUM SAFE CHANGE → TEST →
+REGRESSION → REPORT → CONTINUE
+
+If existing functionality satisfies a requirement: KEEP IT.
+
+If it partially satisfies a requirement: PATCH IT.
+
+If it is broken: UNDERSTAND WHY FIRST, then fix it.
+
+If backend data is missing: DO NOT INVENT IT.
+
+If a feature cannot be correctly implemented with current capabilities:
+implement only the safe supported portion and clearly report the
+limitation.
+
+NEVER delete working logic without dependency tracing and a safe
+replacement.
+
+NEVER commit or push anything to GitHub automatically.
+
+END OF MASTER IMPLEMENTATION PROMPT

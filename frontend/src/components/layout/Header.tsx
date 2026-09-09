@@ -22,7 +22,9 @@ import { ProfileDropdown } from './ProfileDropdown';
 export type MainNavTab = 
   | 'home' 
   | 'estimator' 
-  | 'consumer';
+  | 'consumer'
+  | 'hallmarking'
+  | 'info';
 
 interface HeaderProps {
   activeTab: MainNavTab;
@@ -60,8 +62,10 @@ export const Header: React.FC<HeaderProps> = ({
 
   const navItems: Array<{ id: MainNavTab; label: string; icon: React.ReactNode; badge?: string }> = [
     { id: 'home', label: t('nav.home') || 'Product Guide', icon: <Compass className="w-4 h-4" /> },
+    { id: 'hallmarking', label: t('nav.hallmarking') || 'Hallmarking', icon: <Gem className="w-4 h-4" /> },
     { id: 'estimator', label: t('nav.estimator') || 'Fee Estimator', icon: <Calculator className="w-4 h-4" />, badge: 'MSME' },
     { id: 'consumer', label: t('nav.consumer') || 'Consumer Help', icon: <UserCheck className="w-4 h-4" /> },
+    { id: 'info', label: t('nav.info') || 'Info / Guide', icon: <BookOpen className="w-4 h-4" /> },
   ];
 
   const handleTabClick = (tab: MainNavTab) => {
@@ -130,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onInstallClick}
               className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg bg-gradient-to-r from-bis-800 to-bis-900 hover:from-bis-700 hover:to-bis-800 text-white shadow-sm transition-all transform active:scale-95"
-              title="Install BIS AI Assistant PWA on mobile or desktop"
+              title={t('header.installTitle')}
             >
               <Download className="w-3.5 h-3.5 text-amber-400 stroke-[2.5]" />
               <span>{t('brand.installApp')}</span>
@@ -161,7 +165,7 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Desktop Unified Navigation Strip */}
       <div className="hidden lg:block bg-bis-900 text-white border-t border-bis-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between overflow-x-auto custom-scrollbar">
-          <div className="flex items-center gap-6 sm:gap-8">
+          <div className="flex items-center gap-10 sm:gap-16">
             {navItems.map((item) => {
               const isActive = activeTab === item.id;
               return (
@@ -194,7 +198,7 @@ export const Header: React.FC<HeaderProps> = ({
       {isMobileMenuOpen && (
         <div className="lg:hidden bg-slate-900 text-slate-100 border-t border-slate-800 p-4 space-y-3 animate-slide-up shadow-xl">
           <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-            Navigation Menu
+            {t('header.navMenu')}
           </div>
           <div className="space-y-1">
             {navItems.map((item) => {
@@ -228,7 +232,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Mobile Language Selector */}
           <div className="pt-2 border-t border-slate-800">
             <div className="px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">
-              Select Language / भाषा चुनें
+              {t('header.selectLanguage')}
             </div>
             <div className="grid grid-cols-3 gap-1.5 bg-slate-800/80 p-1 rounded-xl border border-slate-700 text-xs font-bold">
               <button

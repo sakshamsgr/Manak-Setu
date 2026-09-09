@@ -11,15 +11,17 @@ interface CitationCardProps {
 export const CitationCard: React.FC<CitationCardProps> = ({ citation, index }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const docName = citation.document || citation.standard_id || 'Indian Standard (BIS)';
-  const pageNumber = citation.page ?? citation.page_number ?? 1;
+  const docTitle = citation.document_title || citation.title || citation.document || citation.standard_id || 'Indian Standard (BIS)';
+  const pageNumber = citation.page ?? citation.page_number;
+  const hasPage = pageNumber !== undefined && pageNumber !== null && pageNumber > 0;
 
   return (
     <>
       <button
+        type="button"
         onClick={() => setIsModalOpen(true)}
-        className="group inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white hover:bg-bis-50 border border-slate-200 hover:border-bis-300 shadow-sm text-left transition-all duration-150 transform hover:-translate-y-0.5 active:translate-y-0"
-        title={`Click to view verified source text for ${docName} (Page ${pageNumber})`}
+        className="group inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white hover:bg-bis-50 border border-slate-200 hover:border-bis-300 shadow-xs text-left transition-all duration-150 transform hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+        title={`Click to view verified source text for ${docTitle}${hasPage ? ` (Page ${pageNumber})` : ''}`}
       >
         {/* Document Icon */}
         <div className="w-6 h-6 rounded-md bg-bis-100 group-hover:bg-bis-200 text-bis-800 flex items-center justify-center shrink-0 transition-colors">
@@ -29,11 +31,13 @@ export const CitationCard: React.FC<CitationCardProps> = ({ citation, index }) =
         {/* Text */}
         <div className="flex items-center gap-1.5 text-xs font-medium text-slate-800">
           <span className="font-semibold text-bis-900 group-hover:text-bis-700 transition-colors truncate max-w-[140px] sm:max-w-[200px]">
-            Source: {docName}
+            Source: {docTitle}
           </span>
-          <span className="px-1.5 py-0.2 text-[10px] font-semibold bg-slate-100 group-hover:bg-amber-100 group-hover:text-amber-900 text-slate-600 rounded">
-            p. {pageNumber}
-          </span>
+          {hasPage && (
+            <span className="px-1.5 py-0.2 text-[10px] font-semibold bg-slate-100 group-hover:bg-amber-100 group-hover:text-amber-900 text-slate-600 rounded">
+              p. {pageNumber}
+            </span>
+          )}
         </div>
 
         <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-bis-600 transition-colors ml-0.5 shrink-0" />

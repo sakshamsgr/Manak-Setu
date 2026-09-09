@@ -12,9 +12,13 @@ import {
   Package,
   Building2,
   Bookmark,
-  Trash2
+  Trash2,
+  AlertCircle,
+  RefreshCw,
+  X
 } from 'lucide-react';
 import { MainNavTab } from '../layout/Header';
+import { PageInfoButton } from '../common/PageInfoButton';
 import { useLanguage } from '../../context/LanguageContext';
 import { useProductContext } from '../../context/ProductContext';
 
@@ -35,7 +39,10 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
     updateProductProfile,
     savedGuides,
     loadSavedGuide,
-    deleteSavedGuide
+    deleteSavedGuide,
+    errorMessage,
+    retryLastJourney,
+    clearError
   } = useProductContext();
 
   const sampleProductPrompts = [
@@ -113,6 +120,41 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
           </p>
         </div>
 
+        {/* Error Banner with Retry Action (Phase 17) */}
+        {errorMessage && (
+          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in shadow-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+              <span className="text-xs sm:text-sm font-semibold leading-snug">{errorMessage}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0 self-start sm:self-center">
+              <button
+                type="button"
+                onClick={() => {
+                  if (retryLastJourney) {
+                    retryLastJourney();
+                  } else {
+                    handleSubmit();
+                  }
+                }}
+                disabled={isLoading}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+                <span>{t('common.retry') || 'Retry'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={clearError}
+                className="p-1.5 text-rose-400 hover:text-rose-700 rounded-lg hover:bg-rose-100 transition-colors"
+                title="Dismiss"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Primary Interactive Product Profile & Consultation Card (Transplanted Step 1) */}
         <div className="bg-white rounded-3xl shadow-card border-2 border-slate-200/90 p-5 sm:p-7 transition-all hover:border-bis-300">
           <form onSubmit={handleSubmit} className="space-y-6">
@@ -121,6 +163,12 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
                 <span className="w-2 h-2 rounded-full bg-amber-500"></span>
                 <span>{t('hero.inputLabel') || 'TELL US ABOUT YOUR PRODUCT OR COMPLIANCE REQUIREMENT'}</span>
               </label>
+              <PageInfoButton
+                sectionId="section-how-manak-setu-works"
+                tooltip="Learn how Manak Setu works in the Guide"
+                variant="subtle"
+                size="sm"
+              />
             </div>
 
             {/* Transplanted Step 1 Form Grid */}

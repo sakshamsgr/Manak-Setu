@@ -17,9 +17,11 @@ import {
   ChevronUp,
   RefreshCw,
   Sparkles,
-  Info
+  Info,
+  Clock
 } from 'lucide-react';
 import { DocumentItem } from '../../types/compliance';
+import { PageInfoButton } from '../common/PageInfoButton';
 import { useLanguage } from '../../context/LanguageContext';
 import { useProductContext } from '../../context/ProductContext';
 import { scanDocumentCompliance, DocumentScanResult } from '../../services/api';
@@ -33,7 +35,7 @@ interface Step5DocumentsProps {
 }
 
 interface DocState {
-  status: 'Not Uploaded' | 'Scanning' | 'Verified' | 'Discrepancy' | 'Failed';
+  status: 'Not Uploaded' | 'Scanning' | 'Verified' | 'Discrepancy' | 'Failed' | 'Verification Pending' | 'Uploaded';
   fileName?: string;
   fileSize?: number;
   verifiedAt?: string;
@@ -49,6 +51,7 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
   documents,
   onNext,
   onPrev,
+  onAskAI,
 }) => {
   const { t, language } = useLanguage();
   const { guideData } = useProductContext();
@@ -69,6 +72,7 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
   const categories = ['All', 'Legal', 'Technical', 'Quality Control', 'Testing'];
 
   const verifiedCount = Object.values(docStates).filter(d => d.status === 'Verified').length;
+  const pendingCount = Object.values(docStates).filter(d => d.status === 'Verification Pending' || d.status === 'Uploaded').length;
   const totalCount = documents.length;
   const progressPct = totalCount > 0 ? Math.round((verifiedCount / totalCount) * 100) : 0;
 
@@ -130,7 +134,7 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
         }
       }));
 
-      // Automatically expand card to show findings if verified or discrepancy
+      // Automatically expand card to show findings if verified, pending, or discrepancy
       setExpandedDocId(docId);
     } catch (err: any) {
       if (err.name === 'AbortError') return;
@@ -169,7 +173,7 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
   const handleManualToggle = (docId: string) => {
     setDocStates(prev => {
       const current = prev[docId];
-      if (current?.status === 'Verified') {
+      if (current?.status === 'Verification Pending' || current?.status === 'Verified') {
         const next = { ...prev };
         delete next[docId];
         return next;
@@ -177,11 +181,11 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
         return {
           ...prev,
           [docId]: {
-            status: 'Verified',
-            fileName: 'Manual Declaration Verified',
+            status: 'Verification Pending',
+            fileName: 'Self-Certified Declaration',
             verifiedAt: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-            summary: 'Applicant self-certified that this document is prepared and retained at the factory for BIS auditor inspection.',
-            statutoryDisclaimer: 'Self-certified declarations are subject to documentary verification by BIS officers during preliminary factory audit.'
+            summary: 'Applicant self-certified that this statutory document is prepared and retained at the factory for BIS auditor inspection.',
+            statutoryDisclaimer: 'Self-certified declarations are retained for physical documentary verification by BIS officers during preliminary factory audit.'
           }
         };
       }
@@ -195,16 +199,24 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="space-y-1">
-        <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase bg-bis-100 text-bis-900 rounded">
-          Stage 5 of 6
-        </span>
-        <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-          {t('s5Title')}
-        </h2>
-        <p className="text-xs sm:text-sm text-slate-500">
-          {t('s5Subtitle')}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase bg-bis-100 text-bis-900 rounded">
+            Stage 5 of 6
+          </span>
+          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+            {t('s5Title')}
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500">
+            {t('s5Subtitle')}
+          </p>
+        </div>
+        <PageInfoButton
+          sectionId="section-documents"
+          tooltip="Learn about Statutory Application Documents in the Guide"
+          variant="light"
+          size="sm"
+        />
       </div>
 
       {/* Progress Card (Derived strictly from verified documents - Plan Section 14) */}
@@ -219,6 +231,7 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
             </h4>
             <p className="text-xs text-slate-500">
               {verifiedCount} of {totalCount} essential application files verified
+              {pendingCount > 0 ? ` • ${pendingCount} pending officer scrutiny` : ''}
             </p>
           </div>
         </div>
@@ -279,6 +292,7 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
         {filteredDocs.map((doc) => {
           const state = docStates[doc.id] || { status: 'Not Uploaded' };
           const isVerified = state.status === 'Verified';
+          const isPending = state.status === 'Verification Pending' || state.status === 'Uploaded';
           const isScanning = state.status === 'Scanning';
           const isDiscrepancy = state.status === 'Discrepancy';
           const isFailed = state.status === 'Failed';
@@ -290,6 +304,8 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
               className={`p-4 sm:p-5 rounded-2xl border transition-all ${
                 isVerified
                   ? 'bg-white border-emerald-300 shadow-xs'
+                  : isPending
+                  ? 'bg-sky-50/40 border-sky-300 shadow-xs'
                   : isScanning
                   ? 'bg-amber-50/50 border-amber-300 shadow-xs'
                   : isDiscrepancy
@@ -363,6 +379,21 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
+                  ) : isPending ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-sky-100 text-sky-900 text-xs font-bold border border-sky-200">
+                        <Clock className="w-3.5 h-3.5 text-sky-600" />
+                        <span>Officer Scrutiny Pending</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveDoc(doc.id)}
+                        title="Remove file"
+                        className="p-1 rounded text-slate-400 hover:text-rose-600 transition-colors"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   ) : isDiscrepancy ? (
                     <div className="flex items-center gap-1.5">
                       <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-100 text-amber-900 text-xs font-bold border border-amber-300">
@@ -400,7 +431,7 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
                         }
                       }}
                       className="hidden"
-                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx"
+                      accept=".pdf,.png,.jpg,.jpeg,.doc,.docx,.txt"
                     />
 
                     {!isVerified && !isScanning && (
@@ -411,21 +442,23 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
                           className="px-3 py-1.5 rounded-xl bg-bis-50 hover:bg-bis-100 text-bis-900 text-xs font-bold border border-bis-200 flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
                         >
                           <Upload className="w-3.5 h-3.5 text-bis-700" />
-                          <span>{isFailed || isDiscrepancy ? 'Re-Upload & Scan' : 'Upload & Scan'}</span>
+                          <span>{isFailed || isDiscrepancy || isPending ? 'Re-Upload & Scan' : 'Upload & Scan'}</span>
                         </button>
 
-                        <button
-                          type="button"
-                          onClick={() => handleManualToggle(doc.id)}
-                          title="Mark self-certified readiness"
-                          className="px-2 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 text-xs font-medium hover:bg-slate-100"
-                        >
-                          Self-Certify
-                        </button>
+                        {!isPending && (
+                          <button
+                            type="button"
+                            onClick={() => handleManualToggle(doc.id)}
+                            title="Mark self-certified readiness for officer audit"
+                            className="px-2 py-1.5 rounded-xl text-slate-500 hover:text-slate-800 text-xs font-medium hover:bg-slate-100"
+                          >
+                            Self-Certify
+                          </button>
+                        )}
                       </>
                     )}
 
-                    {(isVerified || isDiscrepancy) && (
+                    {(isVerified || isDiscrepancy || isPending) && (
                       <button
                         type="button"
                         onClick={() => setExpandedDocId(isExpanded ? null : doc.id)}
@@ -458,7 +491,7 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
               )}
 
               {/* Expanded AI Scan Findings Drawer */}
-              {isExpanded && (isVerified || isDiscrepancy) && (
+              {isExpanded && (isVerified || isDiscrepancy || isPending) && (
                 <div className="mt-3 pt-3 border-t border-slate-200/80 space-y-2 text-xs animate-fade-in">
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-slate-800 flex items-center gap-1.5">
@@ -514,6 +547,29 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
           );
         })}
       </div>
+
+      {/* Ask AI Helper */}
+      {onAskAI && (
+        <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-slate-600">
+            Have questions about Form-V, machinery schedules, or NABL calibration certificates?
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              onAskAI(
+                productName
+                  ? `What statutory documents, calibration certificates, and layout plans are required for ${productName}?`
+                  : 'What statutory documents, calibration certificates, and layout plans are required for BIS certification?'
+              )
+            }
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-bis-900 hover:text-bis-700 transition-colors cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            Ask Manak Setu AI about Documents
+          </button>
+        </div>
+      )}
 
       {/* Navigation Buttons */}
       <div className="flex items-center justify-between pt-2">

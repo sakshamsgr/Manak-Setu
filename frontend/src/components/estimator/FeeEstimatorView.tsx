@@ -22,6 +22,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import { IndustryScale, DatabaseFeeCalculationResponse } from '../../types/estimator';
+import { PageInfoButton } from '../common/PageInfoButton';
 import { useLanguage } from '../../context/LanguageContext';
 import { useProductContext } from '../../context/ProductContext';
 import { calculateFeeEstimate, getStandardsOptions } from '../../services/api';
@@ -202,17 +203,25 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-6 printable-receipt-root">
       {/* Banner */}
       <div className="bg-gradient-to-r from-bis-950 via-bis-900 to-bis-800 rounded-3xl p-6 sm:p-8 text-white shadow-lg space-y-2 no-print">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-amber-500 text-bis-950 rounded-lg shadow-xs">
-            Official BIS Gazette Tariff
-          </span>
-          <span className="text-xs text-slate-300">Conformity Assessment Regulations 2018</span>
-          {isPrefilledFromGuide && (
-            <span className="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-lg flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5" />
-              Prefilled from Product Guide
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-amber-500 text-bis-950 rounded-lg shadow-xs">
+              Official BIS Gazette Tariff
             </span>
-          )}
+            <span className="text-xs text-slate-300">Conformity Assessment Regulations 2018</span>
+            {isPrefilledFromGuide && (
+              <span className="px-3 py-1 text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 rounded-lg flex items-center gap-1.5">
+                <CheckCircle2 className="w-3.5 h-3.5" />
+                Prefilled from Product Guide
+              </span>
+            )}
+          </div>
+          <PageInfoButton
+            sectionId="section-application"
+            tooltip="Learn about BIS Application Fees & Licensing in the Guide"
+            variant="dark"
+            size="sm"
+          />
         </div>
         <h1 className="text-xl sm:text-3xl font-extrabold tracking-tight">
           {t('estimator.title') || 'BIS Fee & Compliance Cost Estimator'}

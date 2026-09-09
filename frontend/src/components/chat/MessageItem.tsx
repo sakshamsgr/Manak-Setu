@@ -12,9 +12,10 @@ import {
   User,
   ShieldCheck,
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Languages
 } from 'lucide-react';
-import { useTranslation } from 'react-i18next';
+import { useLanguage } from '../../context/LanguageContext';
 import { ChatMessage } from '../../types/chat';
 import { SourcesList } from './CitationCard';
 
@@ -24,16 +25,28 @@ interface MessageItemProps {
 }
 
 export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry }) => {
-  const { t } = useTranslation();
+  const { language, t } = useLanguage();
   const [copied, setCopied] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [feedback, setFeedback] = useState<'up' | 'down' | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
 
   const isUser = message.role === 'user';
   const isError = message.isError;
 
+  // Check if we have an active non-destructive translation variant for current language
+  const hasTranslation = Boolean(
+    message.translations &&
+    message.translations[language] &&
+    message.translations[language].trim() !== message.content.trim()
+  );
+
+  const displayContent = (!showOriginal && hasTranslation)
+    ? message.translations![language]
+    : message.content;
+
   const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
+    navigator.clipboard.writeText(displayContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -48,12 +61,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry }) =>
     }
 
     // Clean markdown before speaking
-    const cleanText = message.content
+    const cleanText = displayContent
       .replace(/[#*_`~\[\]]/g, '')
       .replace(/\(http[^)]+\)/g, '')
       .trim();
 
     const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = language === 'hi' ? 'hi-IN' : language === 'bn' ? 'bn-IN' : 'en-IN';
     utterance.rate = 1.0;
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
@@ -84,12 +98,20 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry }) =>
       {/* Message Content Container */}
       <div className={`flex flex-col max-w-[90%] sm:max-w-[85%] ${isUser ? 'items-end' : 'items-start'}`}>
         {/* Role & Timestamp Header */}
-        <div className="flex items-center gap-2 mb-1 px-1 text-[11px] text-slate-400">
+        <div className="flex items-center gap-2 mb-1 px-1 text-[11px] text-slate-400 flex-wrap">
           <span className="font-semibold text-slate-600">
             {isUser ? 'You' : 'BIS AI Compliance Assistant'}
           </span>
           <span>•</span>
           <span>{new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+          {hasTranslation && (
+            <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-800 border border-amber-200/80 px-1.5 py-0.2 rounded font-medium">
+              <Languages className="w-2.5 h-2.5 text-amber-600" />
+              {showOriginal
+                ? (t('assistant.original') || 'Original')
+                : (language === 'hi' ? 'हिन्दी' : language === 'bn' ? 'বাংলা' : 'English')}
+            </span>
+          )}
           {message.attachmentName && (
             <span className="inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded">
               <FileText className="w-3 h-3" />
@@ -109,11 +131,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry }) =>
           }`}
         >
           {isUser ? (
-            <div className="whitespace-pre-wrap font-normal">{message.content}</div>
+            <div className="whitespace-pre-wrap font-normal">{displayContent}</div>
           ) : (
             <div className="prose prose-sm prose-slate max-w-none prose-p:leading-relaxed prose-headings:text-bis-900 prose-a:text-bis-600 prose-strong:text-slate-900 prose-code:text-bis-700 prose-code:bg-bis-50 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-table:overflow-x-auto prose-table:block prose-table:border prose-table:border-slate-200 prose-th:bg-slate-100 prose-th:p-1.5 prose-td:p-1.5 prose-td:border prose-td:border-slate-200">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {message.content}
+                {displayContent}
               </ReactMarkdown>
             </div>
           )}
@@ -142,6 +164,21 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry }) =>
           )}
         </div>
 
+        {/* Translation Toggle for User Message */}
+        {isUser && hasTranslation && (
+          <button
+            onClick={() => setShowOriginal(!showOriginal)}
+            className="inline-flex items-center gap-1 mt-1 px-1 text-[10px] text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+          >
+            <Languages className="w-3 h-3" />
+            <span>
+              {showOriginal
+                ? (t('assistant.viewTranslation') || 'View Translation')
+                : (t('assistant.viewOriginal') || 'View Original')}
+            </span>
+          </button>
+        )}
+
         {/* Action Controls for Assistant Message */}
         {!isUser && !isError && (
           <div className="flex items-center gap-1.5 mt-1.5 px-1 text-slate-400">
@@ -167,6 +204,24 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry }) =>
                 )}
                 <span className="text-[10px]">{isSpeaking ? 'Stop' : 'Listen'}</span>
               </button>
+            )}
+
+            {hasTranslation && (
+              <>
+                <div className="h-3 w-px bg-slate-200 mx-1" />
+                <button
+                  onClick={() => setShowOriginal(!showOriginal)}
+                  className="p-1 hover:text-slate-700 hover:bg-slate-200/60 rounded text-xs transition-colors flex items-center gap-1 text-bis-700 font-medium cursor-pointer"
+                  title={showOriginal ? (t('assistant.viewTranslation') || 'View Translation') : (t('assistant.viewOriginal') || 'View Original')}
+                >
+                  <Languages className="w-3.5 h-3.5 text-bis-600" />
+                  <span className="text-[10px]">
+                    {showOriginal
+                      ? (t('assistant.viewTranslation') || 'Show Translation')
+                      : (t('assistant.viewOriginal') || 'View Original')}
+                  </span>
+                </button>
+              </>
             )}
 
             <div className="h-3 w-px bg-slate-200 mx-1" />

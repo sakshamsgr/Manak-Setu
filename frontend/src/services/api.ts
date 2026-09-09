@@ -26,17 +26,25 @@ export function normalizeChatResponse(data: RawBackendResponse): ChatNormalizedR
   
   const rawCitations = Array.isArray(data.citations) ? data.citations : [];
   const normalizedCitations: Citation[] = rawCitations.map((item) => {
-    const document = item.document || item.standard_id || 'Indian Standard (BIS)';
+    const document = item.document || item.document_title || item.title || item.standard_id || 'Indian Standard (BIS)';
+    const title = item.title || item.document_title || document;
     const page = item.page ?? item.page_number ?? 1;
     const text = item.text || item.content || '';
+    const url = item.url || item.source_url || item.pdf_url || '';
     const distance = item.distance;
     return {
       document,
+      title,
+      document_title: title,
       page,
-      text,
-      distance,
-      standard_id: document,
       page_number: page,
+      text,
+      url,
+      source_url: url,
+      pdf_url: item.pdf_url,
+      source: item.source,
+      distance,
+      standard_id: item.standard_id || document,
     };
   });
 
@@ -59,6 +67,36 @@ export class ApiTimeoutError extends Error {
     this.name = 'ApiTimeoutError';
     this.isTimeout = true;
   }
+}
+
+/**
+ * Sanitizes backend error responses to extract clean user-friendly messages
+ * without exposing raw JSON, internal database traces, or system paths.
+ */
+export async function safeExtractErrorMessage(response: Response, defaultMessage: string): Promise<string> {
+  try {
+    const text = await response.text();
+    if (!text) return defaultMessage;
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed.detail === 'string' && parsed.detail.trim()) {
+        return parsed.detail.trim();
+      }
+      if (parsed && typeof parsed.error === 'string' && parsed.error.trim()) {
+        return parsed.error.trim();
+      }
+      if (parsed && typeof parsed.message === 'string' && parsed.message.trim()) {
+        return parsed.message.trim();
+      }
+    } catch {
+      if (!text.includes('<!DOCTYPE') && !text.includes('<html') && text.length < 200) {
+        return text.trim();
+      }
+    }
+  } catch {
+    // Ignore extraction error
+  }
+  return defaultMessage;
 }
 
 /**
@@ -138,8 +176,8 @@ export async function sendChatMessage(
     });
 
     if (!response.ok) {
-      const errorDetail = await response.text().catch(() => 'Server error');
-      throw new Error(`Server returned error ${response.status}: ${errorDetail}`);
+      const errorDetail = await safeExtractErrorMessage(response, 'Compliance service temporarily unavailable.');
+      throw new Error(errorDetail);
     }
 
     const data: RawBackendResponse = await response.json();
@@ -161,8 +199,8 @@ export async function sendChatMessage(
       });
 
       if (!fallbackResponse.ok) {
-        const errorDetail = await fallbackResponse.text().catch(() => 'Proxy error');
-        throw new Error(`Proxy error ${fallbackResponse.status}: ${errorDetail}`);
+        const errorDetail = await safeExtractErrorMessage(fallbackResponse, 'Compliance service temporarily unavailable.');
+        throw new Error(errorDetail);
       }
 
       const fallbackData: RawBackendResponse = await fallbackResponse.json();
@@ -206,8 +244,8 @@ export async function sendMultimodalMessage(
     });
 
     if (!response.ok) {
-      const errorDetail = await response.text().catch(() => 'Upload error');
-      throw new Error(`Server returned ${response.status}: ${errorDetail}`);
+      const errorDetail = await safeExtractErrorMessage(response, 'Multimodal compliance service temporarily unavailable.');
+      throw new Error(errorDetail);
     }
 
     const data: RawBackendResponse = await response.json();
@@ -221,7 +259,8 @@ export async function sendMultimodalMessage(
     });
 
     if (!fallbackResponse.ok) {
-      throw new Error(`Multimodal upload failed: ${err.message}`);
+      const errorDetail = await safeExtractErrorMessage(fallbackResponse, 'Multimodal upload failed.');
+      throw new Error(errorDetail);
     }
 
     const fallbackData: RawBackendResponse = await fallbackResponse.json();
@@ -259,7 +298,8 @@ export async function resolveProductGuide(params: {
   });
 
   if (!res.ok) {
-    throw new Error(`Product resolve failed with status ${res.status}`);
+    const msg = await safeExtractErrorMessage(res, 'Product resolution service temporarily unavailable.');
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -273,7 +313,8 @@ export async function getTestingAndLabs(standardId: string, signal?: AbortSignal
     signal,
   });
   if (!res.ok) {
-    throw new Error(`Testing & labs query failed with status ${res.status}`);
+    const msg = await safeExtractErrorMessage(res, 'Testing & laboratories query failed.');
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -287,7 +328,8 @@ export async function getStandardDocuments(standardId: string, signal?: AbortSig
     signal,
   });
   if (!res.ok) {
-    throw new Error(`Documents query failed with status ${res.status}`);
+    const msg = await safeExtractErrorMessage(res, 'Standard documents query failed.');
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -301,7 +343,8 @@ export async function getStandardProcess(standardId: string, signal?: AbortSigna
     signal,
   });
   if (!res.ok) {
-    throw new Error(`Process query failed with status ${res.status}`);
+    const msg = await safeExtractErrorMessage(res, 'Process milestones query failed.');
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -313,7 +356,8 @@ export async function getStandardProcess(standardId: string, signal?: AbortSigna
 export async function getStandardsOptions(signal?: AbortSignal): Promise<{ options: Array<{ id: string; code: string; title: string }> }> {
   const res = await fetchWithTimeout(`${getApiBaseUrl()}/api/standards/options`, { signal });
   if (!res.ok) {
-    throw new Error(`Standards options query failed with status ${res.status}`);
+    const msg = await safeExtractErrorMessage(res, 'Standards options query failed.');
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -348,7 +392,8 @@ export async function calculateFeeEstimate(params: {
   });
 
   if (!res.ok) {
-    throw new Error(`Fee calculation failed with status ${res.status}`);
+    const msg = await safeExtractErrorMessage(res, 'Fee estimate calculation failed.');
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -385,7 +430,8 @@ export async function verifyConsumerMark(params: {
   const url = `${getApiBaseUrl()}/api/consumer/verify?query_type=${encodeURIComponent(params.queryType)}&code=${encodeURIComponent(params.code)}&language=${encodeURIComponent(params.language || 'en')}`;
   const res = await fetchWithTimeout(url, { signal: params.signal });
   if (!res.ok) {
-    throw new Error(`Consumer verification failed with status ${res.status}`);
+    const msg = await safeExtractErrorMessage(res, 'Mark verification service temporarily unavailable.');
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -394,7 +440,7 @@ export interface DocumentScanResult {
   document_id: string;
   filename: string;
   filesize: number;
-  status: 'Verified' | 'Discrepancy' | 'Failed';
+  status: 'Verified' | 'Discrepancy' | 'Failed' | 'Verification Pending' | 'Uploaded';
   confidence_score?: number;
   summary: string;
   checklist_matches?: string[];
@@ -421,18 +467,17 @@ export async function scanDocumentCompliance(params: {
   formData.append('document_title', params.documentTitle);
   if (params.standardId) formData.append('standard_id', params.standardId);
   if (params.sessionId) formData.append('session_id', params.sessionId);
-  formData.append('language', params.language || 'en');
+  if (params.language) formData.append('language', params.language);
 
-  const url = `${getApiBaseUrl()}/api/documents/scan`;
-  const res = await fetchWithTimeout(url, {
+  const res = await fetchWithTimeout(`${getApiBaseUrl()}/api/documents/scan`, {
     method: 'POST',
     body: formData,
     signal: params.signal,
   });
 
   if (!res.ok) {
-    const errorDetail = await res.text().catch(() => 'Document scan error');
-    throw new Error(`Document scan failed with status ${res.status}: ${errorDetail}`);
+    const errorDetail = await safeExtractErrorMessage(res, 'Document compliance pre-scan failed.');
+    throw new Error(errorDetail);
   }
   return res.json();
 }
@@ -592,5 +637,38 @@ export async function getRecommendedLaboratories(params: {
     throw new Error('Failed to retrieve laboratory recommendations');
   }
   return res.json();
+}
+
+/**
+ * Chat History Language Translation API (Phase 8)
+ * Translates an array of text snippets to the target language, preserving IS numbers and citations.
+ */
+export async function translateChatMessages(params: {
+  texts: string[];
+  target_language: string;
+  source_language?: string;
+  signal?: AbortSignal;
+}): Promise<string[]> {
+  if (!params.texts || params.texts.length === 0) return [];
+  const url = `${getApiBaseUrl()}/api/chat/translate`;
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        texts: params.texts,
+        target_language: params.target_language,
+        source_language: params.source_language || 'auto',
+      }),
+      signal: params.signal,
+    },
+    10000
+  );
+  if (!res.ok) {
+    throw new Error('Failed to translate chat messages');
+  }
+  const data = await res.json();
+  return data.translations || [];
 }
 

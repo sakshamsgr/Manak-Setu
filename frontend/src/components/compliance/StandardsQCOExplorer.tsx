@@ -154,11 +154,11 @@ export const StandardsQCOExplorer: React.FC<StandardsQCOExplorerProps> = ({ onCo
                   >
                     <div className="space-y-2.5">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="px-2.5 py-1 text-xs font-mono font-extrabold bg-bis-100 text-bis-900 rounded-lg border border-bis-200">
-                          {doc.document}
+                        <span className="px-2.5 py-1 text-xs font-mono font-extrabold bg-bis-100 text-bis-900 rounded-lg border border-bis-200 truncate max-w-[280px]">
+                          {doc.document_title || doc.title || doc.document}
                         </span>
-                        <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded bg-slate-100 text-slate-600 border border-slate-200">
-                          Page {doc.page}
+                        <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
+                          Page {doc.page ?? doc.page_number ?? 1}
                         </span>
                       </div>
                       
@@ -186,7 +186,7 @@ export const StandardsQCOExplorer: React.FC<StandardsQCOExplorerProps> = ({ onCo
         title={
           <div className="flex items-center gap-2 text-bis-900">
             <ShieldCheck className="w-5 h-5 text-amber-500" />
-            <span className="font-mono">{selectedDoc?.document} (Page {selectedDoc?.page})</span>
+            <span className="font-mono text-sm">{selectedDoc?.document_title || selectedDoc?.title || selectedDoc?.document} (Page {selectedDoc?.page ?? selectedDoc?.page_number ?? 1})</span>
           </div>
         }
         maxWidth="lg"
@@ -201,7 +201,7 @@ export const StandardsQCOExplorer: React.FC<StandardsQCOExplorerProps> = ({ onCo
             {onConsultStandard && selectedDoc && (
               <button
                 onClick={() => {
-                  const prompt = `Can you explain the requirements listed in ${selectedDoc.document} on page ${selectedDoc.page} regarding: "${selectedDoc.text?.slice(0, 50) ?? ''}..."?`;
+                  const prompt = `Can you explain the requirements listed in ${selectedDoc.document_title || selectedDoc.document} on page ${selectedDoc.page} regarding: "${selectedDoc.text?.slice(0, 50) ?? ''}..."?`;
                   setSelectedDoc(null);
                   onConsultStandard(prompt);
                 }}
@@ -224,9 +224,20 @@ export const StandardsQCOExplorer: React.FC<StandardsQCOExplorerProps> = ({ onCo
                 {selectedDoc.text}
               </p>
             </div>
-            <div className="flex items-center gap-2 text-xs text-slate-500 bg-white p-3 rounded-lg border border-slate-100">
-              <Database className="w-4 h-4" />
-              <span>Vector Distance Score: {selectedDoc.distance?.toFixed(3) || 'N/A'} (Lower is better)</span>
+            <div className="flex items-center justify-between text-xs text-slate-600 bg-emerald-50/70 p-3 rounded-xl border border-emerald-200 flex-wrap gap-2">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span className="font-medium text-emerald-900">Authorized Bureau of Indian Standards Indexed Clause</span>
+              </div>
+              <a
+                href={selectedDoc.url || `https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/knowyourstandards/indian_standards/isdetails?is_no=${encodeURIComponent((selectedDoc.standard_id || selectedDoc.document).replace(/[^a-zA-Z0-9]/g, ''))}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-bis-800 hover:text-bis-900 font-semibold flex items-center gap-1 hover:underline"
+              >
+                <span>Official BIS Portal</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </a>
             </div>
           </div>
         )}

@@ -1,6 +1,7 @@
 import os
 import sys
 import re
+import logging
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8")
 if hasattr(sys.stderr, "reconfigure"):
@@ -23,9 +24,35 @@ import bcrypt
 import jwt
 from datetime import datetime, timedelta, timezone
 import hashlib
+import io
+
+try:
+    import fitz  # PyMuPDF
+except ImportError:
+    fitz = None
+
+try:
+    from PIL import Image
+except ImportError:
+    Image = None
+
+try:
+    import pytesseract
+except ImportError:
+    pytesseract = None
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Logging configuration for security & auditing
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+)
+logger = logging.getLogger("manak_setu_api")
+
+# Cookie Security configuration
+SECURE_COOKIE = os.getenv("SECURE_COOKIE", "false").lower() in ("true", "1")
 
 # Initialize Gemini Client once
 client = genai.Client()
@@ -55,6 +82,67 @@ def get_db():
 
 # In-memory session store fallback
 chat_sessions = {}
+
+# In-memory cache for official BIS standard publication metadata (Phase 18: Citations)
+BIS_STANDARDS_DOC_MAP: Dict[str, Dict[str, str]] = {}
+
+def get_bis_standards_doc_map() -> Dict[str, Dict[str, str]]:
+    global BIS_STANDARDS_DOC_MAP
+    if BIS_STANDARDS_DOC_MAP:
+        return BIS_STANDARDS_DOC_MAP
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT id, title, pdf_url FROM bis_standards;")
+        rows = cur.fetchall()
+        for bs_id, title, pdf_url in rows:
+            BIS_STANDARDS_DOC_MAP[bs_id] = {
+                "title": title or bs_id,
+                "pdf_url": pdf_url or ""
+            }
+        cur.close()
+    except Exception as e:
+        logger.warning(f"Failed to pre-cache bis_standards metadata: {e}")
+    finally:
+        if conn:
+            conn.close()
+    return BIS_STANDARDS_DOC_MAP
+
+def resolve_citation_metadata(standard_id: str) -> Dict[str, str]:
+    doc_map = get_bis_standards_doc_map()
+    if standard_id in doc_map:
+        info = doc_map[standard_id]
+        pdf = info.get("pdf_url") or ""
+        return {
+            "title": info.get("title") or standard_id,
+            "url": pdf or "https://www.bis.gov.in",
+            "pdf_url": pdf
+        }
+
+    # Try fuzzy or normalized match
+    clean_id = standard_id.replace("_", "-").lower()
+    for k, v in doc_map.items():
+        if k.replace("_", "-").lower() == clean_id:
+            pdf = v.get("pdf_url") or ""
+            return {
+                "title": v.get("title") or standard_id,
+                "url": pdf or "https://www.bis.gov.in",
+                "pdf_url": pdf
+            }
+
+    # Clean official BIS portal lookup URL
+    clean_is = re.sub(r'[^a-zA-Z0-9]', '', standard_id)
+    portal_url = (
+        f"https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/knowyourstandards/indian_standards/isdetails?is_no={clean_is}"
+        if clean_is and any(c.isdigit() for c in clean_is)
+        else "https://www.bis.gov.in"
+    )
+    return {
+        "title": standard_id.replace("_", " "),
+        "url": portal_url,
+        "pdf_url": ""
+    }
 
 # --- Robust Standard Normalization & Identifier Matching ---
 def parse_standard_components(std_str: str) -> dict:
@@ -116,9 +204,35 @@ def parse_standard_components(std_str: str) -> dict:
         "canonical": canonical
     }
 
+ALLOWED_STANDARD_TABLES = {
+    "standards",
+    "bis_standards",
+    "standard_tests",
+    "testing_requirements",
+    "lab_directory",
+    "laboratories",
+    "guidelines_documents",
+    "standards_process",
+    "qco_standards",
+    "application_documents",
+    "certification_process_steps",
+    "lab_test_charges",
+    "product_classifications",
+    "standard_chunks",
+    "bis_fees",
+    "grouping_rules"
+}
+ALLOWED_STANDARD_COLS = {"standard_id", "standard_number", "id"}
+
 def resolve_matching_standard_id(cur, table_name: str, requested_id: str, col_name: str = "standard_id") -> str | None:
     if not requested_id:
         return None
+
+    # Security: SQL identifier whitelist check to prevent dynamic SQL injection
+    if table_name not in ALLOWED_STANDARD_TABLES:
+        raise ValueError(f"Unauthorized table name in standard query: {table_name}")
+    if col_name not in ALLOWED_STANDARD_COLS:
+        raise ValueError(f"Unauthorized column name in standard query: {col_name}")
         
     # If requested_id is a UUID, resolve standard_number and title from standards table first
     if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', requested_id, re.IGNORECASE):
@@ -510,7 +624,7 @@ async def verify_signup(req: VerifySignupRequest, response: Response):
         
         user_name = user[1] if user and user[1] else clean_email.split("@")[0]
         access_token = create_access_token(data={"sub": clean_email, "name": user_name})
-        response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=False)
+        response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=SECURE_COOKIE)
         return {"message": "Verification successful", "user": {"email": clean_email, "name": user_name}}
     except HTTPException:
         raise
@@ -580,7 +694,7 @@ async def login(req: LoginRequest, response: Response):
     access_token = create_access_token(
         data={"sub": clean_email, "name": user_name}
     )
-    response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=False)
+    response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=SECURE_COOKIE)
     return {"message": "Login successful", "user": {"email": clean_email, "name": user_name}}
 
 @app.post("/auth/forgot-password")
@@ -712,15 +826,21 @@ def read_root():
 @app.get("/api/status")
 def api_status():
     db_connected = False
+    conn = None
+    cur = None
     try:
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT 1;")
-        cur.close()
-        conn.close()
         db_connected = True
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Database health check failed: {e}")
         db_connected = False
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
     return {"status": "online", "database": "connected" if db_connected else "disconnected", "rag": "active"}
 
 def generate_gemini_content(contents, system_instruction: Optional[str] = None, temperature: float = 0.0):
@@ -749,28 +869,61 @@ def generate_gemini_content(contents, system_instruction: Optional[str] = None, 
         raise last_err
 
 # --- 2. Supabase Cloud Vector Search & Context Rewriter ---
-def rewrite_query_with_context(query: str, history: list) -> str:
-    if not history or len(history) < 2:
-        return query
-    recent = history[-4:]
-    history_str = "\n".join([f"{m.get('role', 'user')}: {m.get('text', '')}" for m in recent])
-    prompt = f"""You are a search query optimizer for Bureau of Indian Standards (BIS) documents.
-Given the conversation context and the user's latest follow-up question, rewrite the question into a concise, standalone retrieval query containing explicit product names, standards, and topics.
+def rewrite_query_with_context(query: str, history: list, context: Optional[Dict[str, Any]] = None) -> str:
+    # 1. If multi-turn conversation history exists, use conversational query rewriting
+    if history and len(history) >= 2:
+        recent = history[-4:]
+        history_str = "\n".join([f"{m.get('role', 'user')}: {m.get('text', '')}" for m in recent])
+        context_hint = ""
+        if context:
+            prod = context.get("product") or context.get("product_name") or ""
+            std = context.get("standardId") or context.get("standard_id") or ""
+            if prod or std:
+                context_hint = f"\nActive Page Product: {prod} | Standard: {std}"
+        prompt = f"""You are a search query optimizer for Bureau of Indian Standards (BIS) documents.
+Given the conversation context, active product/standard context, and the user's latest follow-up question, rewrite the question into a concise, standalone retrieval query containing explicit product names, standards, and topics.
+If the question or conversation is in Hindi or Bengali, ensure you include the standard English technical product names and IS codes (e.g., 'Electric Iron IS 302-2-3') alongside query concepts so document retrieval across indexed BIS technical documentation is accurate.
 Do NOT answer the question. Return ONLY the standalone query.
 
 Conversation:
-{history_str}
+{history_str}{context_hint}
 
 Follow-up: {query}
 
 Standalone Query:"""
-    try:
-        resp = generate_gemini_content(contents=prompt, temperature=0.0)
-        cleaned = resp.text.strip().strip('"').strip("'")
-        if cleaned and len(cleaned) > 3:
-            return cleaned
-    except Exception as e:
-        print(f"Query rewrite fallback: {e}")
+        try:
+            resp = generate_gemini_content(contents=prompt, temperature=0.0)
+            cleaned = resp.text.strip().strip('"').strip("'")
+            if cleaned and len(cleaned) > 3:
+                return cleaned
+        except Exception as e:
+            print(f"Query rewrite fallback: {e}")
+
+    # 2. If no history or rewrite was unneeded, enrich implicit queries with active product/standard context
+    if context:
+        prod = str(context.get("product") or context.get("product_name") or "").strip()
+        std = str(context.get("standardId") or context.get("standard_id") or "").strip()
+        query_lower = query.lower()
+        needs_context = False
+        if prod and prod.lower() not in query_lower:
+            needs_context = True
+        if std and std.lower() not in query_lower:
+            needs_context = True
+
+        if needs_context and (prod or std):
+            implicit_triggers = [
+                "routine test", "test", "requirement", "qco", "mandatory", "scheme", "document",
+                "fee", "cost", "lab", "laboratory", "how to apply", "process", "clause", "specification",
+                # Hindi triggers
+                "परीक्षण", "जांच", "आवश्यकता", "शुल्क", "दस्तावेज", "कागजात", "मानक", "अनिवार्य", "प्रयोगशाला", "प्रक्रिया", "धारा", "नियम",
+                # Bengali triggers
+                "পরীক্ষা", "ফি", "নথি", "মানদণ্ড", "বাধ্যতামূলক", "ল্যাব", "প্রক্রিয়া", "ধারা"
+            ]
+            if any(t in query_lower for t in implicit_triggers) or len(query.split()) <= 8:
+                prefix = f"{prod} {std}".strip()
+                if prefix:
+                    return f"{prefix} {query}"
+
     return query
 
 def supabase_vector_search(query: str, top_k: int = 6, threshold: float = 0.65):
@@ -808,6 +961,203 @@ def supabase_vector_search(query: str, top_k: int = 6, threshold: float = 0.65):
 
     return combined_docs
 
+def supabase_hybrid_search(
+    query: str, 
+    top_k: int = 6, 
+    vector_threshold: float = 0.72,
+    context: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Performs True Hybrid Search combining:
+    1. Dense Vector Semantic Search (Gemini 768-dim embeddings <=> pgvector)
+    2. Sparse Lexical / Full-Text Search (PostgreSQL tsvector & ts_rank_cd)
+    3. Context-Aware Standard/Product Filtering & Relevance Boosting
+    4. Reciprocal Rank Fusion (RRF) & Score Normalization
+    5. Deduplication & Citation Metadata Preservation
+    """
+    conn = None
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+
+        # 1. Vector Semantic Search
+        vector_hits = {}
+        try:
+            embed_resp = client.models.embed_content(
+                model="gemini-embedding-001",
+                contents=query,
+                config=types.EmbedContentConfig(output_dimensionality=768)
+            )
+            query_embedding = embed_resp.embeddings[0].values
+
+            cur.execute("""
+                SELECT id, standard_id, page_number, content, embedding <=> %s::vector AS distance
+                FROM standard_chunks
+                WHERE embedding <=> %s::vector < %s
+                ORDER BY distance ASC
+                LIMIT %s;
+            """, (query_embedding, query_embedding, vector_threshold, top_k * 3))
+
+            for rank_idx, (cid, sid, page, content, dist) in enumerate(cur.fetchall()):
+                v_dist = float(dist)
+                v_score = max(0.0, 1.0 - v_dist)
+                vector_hits[cid] = {
+                    "id": cid,
+                    "standard_id": sid,
+                    "page_number": page,
+                    "content": content,
+                    "distance": v_dist,
+                    "v_score": v_score,
+                    "v_rank": rank_idx + 1
+                }
+        except Exception as e:
+            print(f"[hybrid_search] Vector retrieval warning: {e}")
+
+        # 2. Lexical / Full-Text Search (PostgreSQL FTS)
+        fts_hits = {}
+        try:
+            clean_query = re.sub(r'[:\-_/\\()"\']', ' ', query).strip()
+            fts_search_query = clean_query
+            
+            # Cross-lingual FTS enhancement: If query has minimal alphanumeric ASCII terms (e.g. Indic script)
+            # and context is provided, append English product and standard keywords so PostgreSQL's English FTS can match.
+            ascii_words = [w for w in re.findall(r'[A-Za-z0-9]+', clean_query) if len(w) > 1]
+            if len(ascii_words) <= 1 and context:
+                prod = str(context.get("product") or context.get("product_name") or "").strip()
+                std = str(context.get("standardId") or context.get("standard_id") or "").strip()
+                extra_terms = " ".join([w for w in [prod, std] if w])
+                if extra_terms:
+                    fts_search_query = f"{fts_search_query} {extra_terms}".strip()
+
+            if fts_search_query:
+                cur.execute("""
+                    SELECT id, standard_id, page_number, content,
+                           ts_rank_cd(to_tsvector('english', content), plainto_tsquery('english', %s)) AS fts_rank
+                    FROM standard_chunks
+                    WHERE to_tsvector('english', content) @@ plainto_tsquery('english', %s)
+                    ORDER BY fts_rank DESC
+                    LIMIT %s;
+                """, (fts_search_query, fts_search_query, top_k * 3))
+
+                for rank_idx, (cid, sid, page, content, rank_val) in enumerate(cur.fetchall()):
+                    rank_f = float(rank_val)
+                    k_score = min(1.0, rank_f / (rank_f + 0.5))
+                    fts_hits[cid] = {
+                        "id": cid,
+                        "standard_id": sid,
+                        "page_number": page,
+                        "content": content,
+                        "k_score": k_score,
+                        "k_rank": rank_idx + 1
+                    }
+        except Exception as e:
+            print(f"[hybrid_search] Lexical FTS warning: {e}")
+            if conn:
+                conn.rollback()
+
+        # 3. Contextual Keyword & Standard Matching
+        target_tokens = []
+        if context:
+            std_hint = str(context.get("standard_id") or context.get("standardId") or "")
+            prod_hint = str(context.get("product") or context.get("product_name") or "")
+            if std_hint:
+                target_tokens.append(std_hint.lower())
+            if prod_hint:
+                target_tokens.append(prod_hint.lower())
+
+        # 4. Score Fusion (RRF + Weighted Linear Scoring)
+        all_candidate_ids = set(vector_hits.keys()).union(set(fts_hits.keys()))
+        scored_candidates = []
+
+        for cid in all_candidate_ids:
+            v_info = vector_hits.get(cid)
+            f_info = fts_hits.get(cid)
+
+            sid = (v_info or f_info)["standard_id"]
+            page = (v_info or f_info)["page_number"]
+            content = (v_info or f_info)["content"]
+            dist = v_info["distance"] if v_info else 0.5
+
+            v_score = v_info["v_score"] if v_info else 0.0
+            k_score = f_info["k_score"] if f_info else 0.0
+
+            rrf_v = (1.0 / (60 + v_info["v_rank"])) if v_info else 0.0
+            rrf_k = (1.0 / (60 + f_info["k_rank"])) if f_info else 0.0
+            rrf_score = (rrf_v + rrf_k) * 50.0
+
+            linear_score = (0.60 * v_score) + (0.40 * k_score)
+
+            context_boost = 0.0
+            sid_lower = sid.lower()
+            for tok in target_tokens:
+                if tok in sid_lower:
+                    context_boost = 0.25
+                    break
+
+            # Stage-specific technical token boosting (Prompt Section 10: Current-stage information priority)
+            stage_boost = 0.0
+            content_lower = content.lower()
+            if context and (context.get("stage") or context.get("active_step")):
+                stage_val = context.get("stage") or context.get("active_step")
+                try:
+                    stage_int = int(stage_val)
+                except (ValueError, TypeError):
+                    stage_int = 0
+
+                stage_keywords = {
+                    1: ["profile", "scale", "micro", "small", "medium", "manufacturer", "domestic", "foreign", "concession"],
+                    2: ["standard", "scope", "specification", "clause", "requirement", "related"],
+                    3: ["qco", "quality control order", "scheme", "mandatory", "voluntary", "gazette", "licence", "certification"],
+                    4: ["test", "routine", "acceptance", "apparatus", "testing", "laboratory", "lab", "sampling", "clause", "method"],
+                    5: ["document", "drawing", "layout", "machinery", "calibration", "form-v", "consent", "schedule", "checklist"],
+                    6: ["application", "manakonline", "portal", "milestone", "audit", "grant", "timeline", "process", "inspection"]
+                }
+                kw_list = stage_keywords.get(stage_int, [])
+                if any(kw in content_lower for kw in kw_list):
+                    stage_boost = 0.20
+
+            final_score = linear_score + rrf_score + context_boost + stage_boost
+
+            source_type = "Hybrid (Vector + Keyword)" if (v_info and f_info) else ("Vector (Semantic)" if v_info else "Keyword (FTS)")
+
+            doc_meta = resolve_citation_metadata(sid)
+            scored_candidates.append({
+                "text": content,
+                "meta": {
+                    "standard_id": sid,
+                    "page_number": page,
+                    "title": doc_meta["title"],
+                    "document": doc_meta["title"],
+                    "document_title": doc_meta["title"],
+                    "url": doc_meta["url"],
+                    "source_url": doc_meta["url"],
+                    "pdf_url": doc_meta["pdf_url"],
+                    "text": content,
+                    "distance": dist,
+                    "score": round(final_score, 4),
+                    "source": source_type
+                },
+                "_score": final_score
+            })
+
+        # 5. Sort, Deduplicate, and Return Top K
+        scored_candidates.sort(key=lambda x: x["_score"], reverse=True)
+
+        seen_pages = set()
+        deduped = []
+        for cand in scored_candidates:
+            key = (cand["meta"]["standard_id"], cand["meta"]["page_number"])
+            if key not in seen_pages:
+                seen_pages.add(key)
+                deduped.append({"text": cand["text"], "meta": cand["meta"]})
+                if len(deduped) >= top_k:
+                    break
+
+        return deduped
+    finally:
+        if conn:
+            conn.close()
+
 # --- 3. Text Chat Endpoint ---
 class ChatRequest(BaseModel):
     session_id: str
@@ -838,65 +1188,185 @@ async def chat_endpoint(req: ChatRequest, request: Request):
     history = chat_sessions[user_id]
 
     # Contextual query rewriting for follow-ups
-    effective_query = rewrite_query_with_context(req.message, history)
+    effective_query = rewrite_query_with_context(req.message, history, context=req.context)
     
-    # Context note if Stage 1 parameters were passed
-    context_note = ""
+    # Structured Page & Workflow Context (Phase 4: Manak Setu AI Page Context)
+    page_context_info = []
     if req.context:
-        ctx_parts = []
-        if req.context.get("product_name"):
-            ctx_parts.append(f"Product: {req.context['product_name']}")
-        if req.context.get("industry_scale"):
-            ctx_parts.append(f"Scale: {req.context['industry_scale']}")
-        if req.context.get("active_step"):
-            ctx_parts.append(f"Current Roadmap Stage: {req.context['active_step']}")
-        if ctx_parts:
-            context_note = f"\nUser Consultation Context: ({', '.join(ctx_parts)})"
+        page = req.context.get("page") or req.context.get("active_tab") or req.context.get("tab")
+        if page:
+            page_context_info.append(f"Active Page/Section: {page}")
+        stage = req.context.get("stage") or req.context.get("active_step")
+        if stage:
+            stage_names = {
+                1: "Stage 1 — Product Profile",
+                2: "Stage 2 — Applicable Standard",
+                3: "Stage 3 — Certification / QCO",
+                4: "Stage 4 — Testing & Labs",
+                5: "Stage 5 — Documents Checklist",
+                6: "Stage 6 — Application & Milestones"
+            }
+            stage_str = stage_names.get(stage, f"Stage {stage}") if isinstance(stage, int) else str(stage)
+            page_context_info.append(f"Product Guide Stage: {stage_str}")
+        product = req.context.get("product") or req.context.get("product_name")
+        if product:
+            page_context_info.append(f"Product: {product}")
+        std_id = req.context.get("standardId") or req.context.get("standard_id")
+        std_name = req.context.get("standardName") or req.context.get("standard_name")
+        if std_id:
+            page_context_info.append(f"Indian Standard: {std_id}{f' ({std_name})' if std_name else ''}")
+        user_type = req.context.get("userType") or req.context.get("user_type") or req.context.get("userRole")
+        if user_type:
+            page_context_info.append(f"User Persona: {user_type.capitalize()}")
+        metal = req.context.get("metal")
+        if metal:
+            page_context_info.append(f"Precious Metal: {metal.capitalize()} ({'IS 1417' if metal.lower() == 'gold' else 'IS 2112'})")
+        loc = req.context.get("location")
+        if loc:
+            page_context_info.append(f"Location: {loc}")
+        scale = req.context.get("industry_scale") or req.context.get("industryScale")
+        if scale:
+            page_context_info.append(f"Industry Scale: {scale}")
 
-    retrieved_chunks = supabase_vector_search(effective_query)
+        # Stage-specific enriched context (Phase 7: Product Guide AI Integration)
+        scheme = req.context.get("scheme")
+        if scheme:
+            page_context_info.append(f"Certification Scheme: {scheme}")
+        qco = req.context.get("qcoNotification") or req.context.get("qco_notification")
+        if qco:
+            page_context_info.append(f"QCO Order: {qco}")
+        is_mand = req.context.get("isMandatory") if req.context.get("isMandatory") is not None else req.context.get("is_mandatory")
+        if is_mand is not None:
+            page_context_info.append(f"Certification Mandate: {'Mandatory under QCO' if is_mand else 'Voluntary'}")
+        routine_count = req.context.get("routineTestsCount")
+        if routine_count is not None:
+            page_context_info.append(f"Configured Routine Tests: {routine_count}")
+        labs_count = req.context.get("labsCount")
+        if labs_count is not None:
+            page_context_info.append(f"Recognized Testing Labs: {labs_count}")
+        docs_count = req.context.get("documentsCount")
+        if docs_count is not None:
+            page_context_info.append(f"Required Statutory Documents: {docs_count}")
+
+    context_note = ""
+    if page_context_info:
+        context_note = "\nActive User Context:\n" + "\n".join([f"- {info}" for info in page_context_info])
+
+    stage_priority_directive = ""
+    stage_num = None
+    if req.context:
+        stg_raw = req.context.get("stage") or req.context.get("active_step")
+        try:
+            stage_num = int(stg_raw)
+        except (ValueError, TypeError):
+            pass
+
+    if stage_num == 1:
+        stage_priority_directive = (
+            "\n- CURRENT-STAGE MANDATE (Stage 1 — Product Profile): The user is currently configuring their product profile. "
+            "Prioritize guidance on product classification, industry scale concessions (e.g. 50% concession on marking fees for Micro and Startup enterprises), "
+            "domestic vs Foreign Manufacturers Certification Scheme (FMCS), and scope of manufacturing. Stage 1 details take absolute priority over unrelated topics."
+        )
+    elif stage_num == 2:
+        stage_priority_directive = (
+            "\n- CURRENT-STAGE MANDATE (Stage 2 — Applicable Standard): The user is reviewing the applicable Indian Standard. "
+            "Prioritize the exact standard code (e.g. IS 302-2-3 / IS 368), standard title, scope, why it applies to the user's product specifications, "
+            "and active vs superseded standard status. Technical standard alignment takes absolute priority over unrelated topics."
+        )
+    elif stage_num == 3:
+        stage_priority_directive = (
+            "\n- CURRENT-STAGE MANDATE (Stage 3 — Certification Scheme & QCO): The user is examining the certification scheme and regulatory mandate. "
+            "Prioritize whether certification is legally mandatory under an issued Quality Control Order (QCO) or voluntary, the applicable scheme (Scheme-I ISI Mark or Scheme-II CRS), "
+            "relevant Ministry Gazette notification orders, and enforcement deadlines. Certification and QCO rules take absolute priority over unrelated topics."
+        )
+    elif stage_num == 4:
+        stage_priority_directive = (
+            "\n- CURRENT-STAGE MANDATE (Stage 4 — Testing & Labs): The user is inspecting testing and laboratory requirements. "
+            "Prioritize routine testing limits, acceptance tests, testing frequencies under the Scheme of Testing and Inspection (STI), in-house factory testing requirements, "
+            "and BIS-recognized or NABL-accredited third-party laboratories. Testing parameters and lab facilities take absolute priority over unrelated topics."
+        )
+    elif stage_num == 5:
+        stage_priority_directive = (
+            "\n- CURRENT-STAGE MANDATE (Stage 5 — Documents Checklist): The user is preparing statutory application documents. "
+            "Prioritize statutory document requirements including Form-V (Scheme of Testing and Inspection acceptance), factory layout plans, manufacturing machinery schedules, "
+            "in-house test equipment list with valid NABL calibration certificates, and honest document verification statuses. Document compliance takes absolute priority over unrelated topics."
+        )
+    elif stage_num == 6:
+        stage_priority_directive = (
+            "\n- CURRENT-STAGE MANDATE (Stage 6 — Application Process): The user is in the final application and milestone roadmap stage. "
+            "Prioritize the step-by-step e-BIS Manakonline submission workflow, portal upload sequence, on-site factory audit preparation, "
+            "sample drawing protocols, and the milestone timeline leading to grant of CM/L licence. Application workflow takes absolute priority over unrelated topics."
+        )
+
+    greeting_words = r'(?:hello(?:\s+there)?|hi(?:\s+there)?|hey(?:\s+there)?|greetings|good\s+(?:morning|afternoon|evening|day|night)|namaste|namaskar|pranam|vanakkam|who\s+are\s+you|what\s+is\s+your\s+name|what\s+can\s+you\s+do|thanks(?:\s+a\s+lot)?|thank\s+you(?:\s+very\s+much)?|dhanyawad|bye|goodbye)'
+    is_conversational = bool(re.match(
+        rf'^(?:{greeting_words}[,\s!.]*)+$',
+        req.message.strip(),
+        re.IGNORECASE
+    ))
+    if is_conversational and not req.context:
+        retrieved_chunks = []
+    else:
+        retrieved_chunks = supabase_hybrid_search(effective_query, top_k=6, vector_threshold=0.72, context=req.context)
     
     # Language Directive (Implementation Plan Section 7: Multilingual Architecture)
     lang_directive = ""
     if req.language == "hi":
         lang_directive = (
-            "\n- LANGUAGE REQUIREMENT: Answer strictly and fluently in professional Hindi (हिन्दी) using Devanagari script."
-            "\n- PRESERVATION MANDATE: You MUST preserve all official BIS standard numbers (e.g. 'IS 302', 'IS 368:2014'), clause numbers (e.g. 'Clause 7.1', 'Clause 8.1'), "
-            "statutory acronyms ('QCO', 'ISI', 'CRS', 'HUID', 'FMCS', 'BIS'), numerical values, and document references in their original Roman/Arabic alphanumeric format without translation or alteration."
+            "\n- LANGUAGE REQUIREMENT: Answer strictly and fluently in professional, natural Hindi (हिन्दी) using Devanagari script."
+            "\n- STRICT TECHNICAL PRESERVATION MANDATE:"
+            "\n  1. You MUST preserve all official Indian Standard numbers (e.g. 'IS 302', 'IS 302-2-3', 'IS 368:2014', 'IS 1417', 'IS 2112') in their original Roman/Arabic alphanumeric format. Do NOT transliterate them into Devanagari (write 'IS 302', NEVER 'आईएस 302')."
+            "\n  2. You MUST preserve clause numbers (e.g. 'Clause 7.1', 'Clause 8.1', 'Clause 24') and license/HUID numbers (e.g. 'CM/L-1234567', 'HUID') in original Roman characters."
+            "\n  3. You MUST preserve statutory acronyms ('QCO', 'ISI', 'CRS', 'HUID', 'FMCS', 'BIS', 'NABL', 'STI', 'CPA') in Roman capital letters."
+            "\n  4. Preserve numerical test limits, electrical ratings, and engineering units (e.g. '500 V', '2 MΩ', '0.75 mm²', '16 A', '50 Hz') accurately."
+            "\n  5. All explanatory sentences, headings, bullet points, and advice must be written in fluent, grammatically correct Devanagari Hindi (do not use Hinglish for prose)."
             "\n- CITATIONS: Keep all cited source document titles and page references exactly as given in the context."
         )
     elif req.language == "bn":
         lang_directive = (
-            "\n- LANGUAGE REQUIREMENT: Answer strictly and fluently in professional Bengali (বাংলা) using Bengali script."
-            "\n- PRESERVATION MANDATE: You MUST preserve all official BIS standard numbers (e.g. 'IS 302', 'IS 368:2014'), clause numbers (e.g. 'Clause 7.1', 'Clause 8.1'), "
-            "statutory acronyms ('QCO', 'ISI', 'CRS', 'HUID', 'FMCS', 'BIS'), numerical values, and document references in their original Roman/Arabic alphanumeric format without translation or alteration."
+            "\n- LANGUAGE REQUIREMENT: Answer strictly and fluently in professional, natural Bengali (বাংলা) using Bengali script."
+            "\n- STRICT TECHNICAL PRESERVATION MANDATE:"
+            "\n  1. You MUST preserve all official Indian Standard numbers (e.g. 'IS 302', 'IS 302-2-3', 'IS 368:2014', 'IS 1417', 'IS 2112') in their original Roman/Arabic alphanumeric format. Do NOT transliterate them into Bengali script (write 'IS 302', NEVER 'আইএস ৩০২')."
+            "\n  2. You MUST preserve clause numbers (e.g. 'Clause 7.1', 'Clause 8.1', 'Clause 24') and license/HUID numbers (e.g. 'CM/L-1234567', 'HUID') in original Roman characters."
+            "\n  3. You MUST preserve statutory acronyms ('QCO', 'ISI', 'CRS', 'HUID', 'FMCS', 'BIS', 'NABL', 'STI', 'CPA') in Roman capital letters."
+            "\n  4. Preserve numerical test limits, electrical ratings, and engineering units (e.g. '500 V', '2 MΩ', '0.75 mm²', '16 A', '50 Hz') accurately."
+            "\n  5. All explanatory sentences, headings, bullet points, and advice must be written in fluent, grammatically correct Bengali (do not use Benglish for prose)."
             "\n- CITATIONS: Keep all cited source document titles and page references exactly as given in the context."
         )
     else:
         lang_directive = "\n- LANGUAGE REQUIREMENT: Answer in clear, professional English."
 
-    # --- Similarity / Content Guard ---
-    if not retrieved_chunks or len(retrieved_chunks) == 0:
-        fallback_msg = "This information is not present in the indexed BIS standard documentation."
-        if req.language == "hi":
-            fallback_msg = "यह जानकारी अनुक्रमित बीआईएस मानक दस्तावेज़ों में उपलब्ध नहीं है।"
-        elif req.language == "bn":
-            fallback_msg = "এই তথ্যটি সূচিবদ্ধ বিআইএস মানক নথিতে উপলব্ধ নেই।"
-        return {
-            "response": fallback_msg,
-            "citations": []
-        }
-    # ----------------------------------------
+    # Grounded technical chunks or fallback context note
+    if retrieved_chunks and len(retrieved_chunks) > 0:
+        context_text = "\n".join([f"- {item['text']} (Page {item['meta']['page_number']}, Standard: {item['meta'].get('standard_id', '')})" for item in retrieved_chunks])
+    else:
+        context_text = "(No specific technical standard chunks were retrieved for this query. Rely on the Active User Context and verified official BIS regulations. If the query requires specific unindexed standard clauses, state that they are not in the indexed documentation.)"
 
-    context_text = "\n".join([f"- {item['text']} (Page {item['meta']['page_number']})" for item in retrieved_chunks])
+    system_instruction = f"""You are Manak Setu (मानक सेतु), the official AI-powered Intelligent Assistant for Indian Standards and BIS (Bureau of Indian Standards) Services, developed for Industries and Consumers.
 
-    system_instruction = f"""You are a strict Bureau of Indian Standards (BIS) verification agent.
-    CRITICAL RULE: Answer the query SOLELY using the facts directly stated in the Context below.
-    - Do NOT extrapolate, assume, or use any prior training knowledge.
-    - If the Context does not explicitly contain the answer, reply EXACTLY with:
-    "This information is not present in the indexed BIS standard documentation."
-    - Always include the document name and page number when citing facts.{context_note}{lang_directive}
+YOUR PERSONA & BEHAVIOR:
+1. Natural & Conversational: Be polite, conversational, and helpful like a ChatGPT-style assistant. Respond to greetings (hello, hi, namaste, etc.) warmly, identify yourself as Manak Setu, and invite questions regarding Indian Standards, BIS certification, hallmarking, or consumer protection.
+2. BIS-Focused (NOT a generic internet chatbot):
+   - You strictly specialize in Indian Standards, BIS certification schemes (Scheme-I ISI Mark, Scheme-II CRS, FMCS), mandatory Quality Control Orders (QCOs), testing laboratories, application documents, fee estimation, gold/silver hallmarking (IS 1417, IS 2112, HUID), and consumer rights (BIS Act 2016, CPA 2019).
+   - If the user asks an unrelated question outside BIS/standards (e.g. sports, movies, cooking recipes, general programming, world history, politics), POLITELY DECLINE by explaining that as Manak Setu, you are dedicated exclusively to Indian Standards, BIS certification, and compliance, and offer to help them with a BIS-related topic instead.
+3. Page & Workflow Awareness:
+   - Use the Active User Context below to tailor your responses to the user's current section and stage.
+   - For example:
+     * On Product Guide: focus on the active stage (Product Profile, Applicable Standard, QCO notifications, Lab Testing requirements, Statutory Documents, or Application process).
+     * On Fee Estimator: focus on BIS fee schedules, inspection charges, marking fees, and the 50% concession for Micro and Startup enterprises.
+     * On Consumer Help: guide on verifying CM/L numbers, checking ISI authenticity, or reporting defective products via the BIS Care app and e-BIS complaints.
+     * On Hallmarking: guide on 3 mandatory marks for Gold (IS 1417) + 6-digit HUID, 4 marks for Silver (IS 2112), BIS Rule 49 compensation (refund + 2x shortfall), or the 10-stage jeweller onboarding workflow.
+4. Grounded Knowledge & Hallucination Prevention:
+   - When specific retrieved BIS document chunks are provided below, answer technical standard questions using those facts and cite the document and page.
+   - For BIS workflow, portal navigation, e-BIS Manakonline application milestones, industry scale definitions, and MSME fee concessions (e.g. 50% concession on marking fees for Micro/Startup enterprises), provide authoritative, structured guidance based on official BIS regulations and the Active User Context.
+   - ONLY state that details are not present in the indexed standard documentation when the user specifically asks for technical test limits, parameters, or standard clauses that cannot be found in the context or indexed chunks. Never refuse procedural, workflow, or stage guidance questions.
+   - NEVER invent IS numbers, fake laboratory names, or fake "verified" statuses.{lang_directive}
 
-    Context:\n{context_text}"""
+{context_note}
+{stage_priority_directive}
+
+Indexed BIS Context:
+{context_text}"""
 
     gemini_history = []
     for msg in history[-10:]:
@@ -916,9 +1386,40 @@ async def chat_endpoint(req: ChatRequest, request: Request):
         chat_sessions[user_id] = history
         save_chat_history_to_db(user_id, history)
 
-        return {"response": response.text, "citations": [c['meta'] for c in retrieved_chunks]}
+        # Suppress citations on out-of-domain refusals or when response indicates topic is outside BIS domain
+        resp_lower = (response.text or "").lower()
+        is_refusal = any(phrase in resp_lower for phrase in [
+            "outside of the bis domain",
+            "outside the bis domain",
+            "outside of the bis scope",
+            "outside the scope of bis",
+            "outside of bis",
+            "unable to provide recipes",
+            "strictly dedicated to indian standards",
+            "dedicated exclusively to indian standards",
+            "exclusively dedicated to indian standards",
+            "as manak setu, i am dedicated exclusively",
+            "as manak setu, i specialize exclusively",
+            "topics outside of the bis",
+            "questions outside of the bis",
+            "outside my domain",
+            "outside my scope"
+        ])
+
+        # Sanitize citations: remove internal ranking/distance metrics (Section 18.2) & preserve authentic metadata
+        citations_result = []
+        if retrieved_chunks and not is_conversational and not is_refusal:
+            for c in retrieved_chunks:
+                meta = dict(c.get('meta', {}))
+                meta.pop('distance', None)
+                meta.pop('score', None)
+                if 'text' not in meta or not meta['text']:
+                    meta['text'] = c.get('text', '')
+                citations_result.append(meta)
+        return {"response": response.text, "citations": citations_result}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in /chat endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An error occurred while generating response. Please try again.")
 
 # --- 4. Multimodal Endpoint ---
 @app.post("/chat/multimodal")
@@ -950,50 +1451,50 @@ async def multimodal_chat_endpoint(
 
     mime_type = file.content_type or ("application/pdf" if ext == ".pdf" else "image/jpeg")
 
-    retrieved_chunks = supabase_vector_search(message)
+    retrieved_chunks = supabase_hybrid_search(message, top_k=4, vector_threshold=0.72)
     
     # Language Directive (Implementation Plan Section 7: Multilingual Architecture)
     lang_directive = ""
     if language == "hi":
         lang_directive = (
-            "\n- LANGUAGE REQUIREMENT: Answer strictly and fluently in professional Hindi (हिन्दी) using Devanagari script."
-            "\n- PRESERVATION MANDATE: You MUST preserve all official BIS standard numbers (e.g. 'IS 302', 'IS 368:2014'), clause numbers (e.g. 'Clause 7.1', 'Clause 8.1'), "
-            "statutory acronyms ('QCO', 'ISI', 'CRS', 'HUID', 'FMCS', 'BIS'), numerical values, and document references in their original Roman/Arabic alphanumeric format without translation or alteration."
+            "\n- LANGUAGE REQUIREMENT: Answer strictly and fluently in professional, natural Hindi (हिन्दी) using Devanagari script."
+            "\n- STRICT TECHNICAL PRESERVATION MANDATE:"
+            "\n  1. You MUST preserve all official Indian Standard numbers (e.g. 'IS 302', 'IS 302-2-3', 'IS 368:2014', 'IS 1417', 'IS 2112') in their original Roman/Arabic alphanumeric format. Do NOT transliterate them into Devanagari (write 'IS 302', NEVER 'आईएस 302')."
+            "\n  2. You MUST preserve clause numbers (e.g. 'Clause 7.1', 'Clause 8.1', 'Clause 24') and license/HUID numbers (e.g. 'CM/L-1234567', 'HUID') in original Roman characters."
+            "\n  3. You MUST preserve statutory acronyms ('QCO', 'ISI', 'CRS', 'HUID', 'FMCS', 'BIS', 'NABL', 'STI', 'CPA') in Roman capital letters."
+            "\n  4. Preserve numerical test limits, electrical ratings, and engineering units (e.g. '500 V', '2 MΩ', '0.75 mm²', '16 A', '50 Hz') accurately."
+            "\n  5. All explanatory sentences, headings, bullet points, and advice must be written in fluent, grammatically correct Devanagari Hindi (do not use Hinglish for prose)."
             "\n- CITATIONS: Keep all cited source document titles and page references exactly as given in the context."
         )
     elif language == "bn":
         lang_directive = (
-            "\n- LANGUAGE REQUIREMENT: Answer strictly and fluently in professional Bengali (বাংলা) using Bengali script."
-            "\n- PRESERVATION MANDATE: You MUST preserve all official BIS standard numbers (e.g. 'IS 302', 'IS 368:2014'), clause numbers (e.g. 'Clause 7.1', 'Clause 8.1'), "
-            "statutory acronyms ('QCO', 'ISI', 'CRS', 'HUID', 'FMCS', 'BIS'), numerical values, and document references in their original Roman/Arabic alphanumeric format without translation or alteration."
+            "\n- LANGUAGE REQUIREMENT: Answer strictly and fluently in professional, natural Bengali (বাংলা) using Bengali script."
+            "\n- STRICT TECHNICAL PRESERVATION MANDATE:"
+            "\n  1. You MUST preserve all official Indian Standard numbers (e.g. 'IS 302', 'IS 302-2-3', 'IS 368:2014', 'IS 1417', 'IS 2112') in their original Roman/Arabic alphanumeric format. Do NOT transliterate them into Bengali script (write 'IS 302', NEVER 'আইএস ৩০২')."
+            "\n  2. You MUST preserve clause numbers (e.g. 'Clause 7.1', 'Clause 8.1', 'Clause 24') and license/HUID numbers (e.g. 'CM/L-1234567', 'HUID') in original Roman characters."
+            "\n  3. You MUST preserve statutory acronyms ('QCO', 'ISI', 'CRS', 'HUID', 'FMCS', 'BIS', 'NABL', 'STI', 'CPA') in Roman capital letters."
+            "\n  4. Preserve numerical test limits, electrical ratings, and engineering units (e.g. '500 V', '2 MΩ', '0.75 mm²', '16 A', '50 Hz') accurately."
+            "\n  5. All explanatory sentences, headings, bullet points, and advice must be written in fluent, grammatically correct Bengali (do not use Benglish for prose)."
             "\n- CITATIONS: Keep all cited source document titles and page references exactly as given in the context."
         )
     else:
         lang_directive = "\n- LANGUAGE REQUIREMENT: Answer in clear, professional English."
 
-    # --- Similarity / Content Guard ---
-    if not retrieved_chunks or len(retrieved_chunks) == 0:
-        fallback_msg = "This information is not present in the indexed BIS standard documentation."
-        if language == "hi":
-            fallback_msg = "यह जानकारी अनुक्रमित बीआईएस मानक दस्तावेज़ों में उपलब्ध नहीं है।"
-        elif language == "bn":
-            fallback_msg = "এই তথ্যটি সূচিবদ্ধ বিআইএস মানক নথিতে উপলব্ধ নেই।"
-        return {
-            "filename": file.filename,
-            "response": fallback_msg,
-            "citations": []
-        }
-    # ----------------------------------------
+    # Grounded technical chunks or inspection context
+    if retrieved_chunks and len(retrieved_chunks) > 0:
+        context_text = "\n".join([f"- {item['text']} (Page {item['meta']['page_number']}, Standard: {item['meta'].get('standard_id', '')})" for item in retrieved_chunks])
+    else:
+        context_text = "(No specific technical standard chunks were retrieved for this query. Visually examine the uploaded media for standard markings, ISI mark, 7-digit CM/L number, 6-digit HUID code, product ratings, or laboratory test report details.)"
 
-    context_text = "\n".join([f"- {item['text']} (Page {item['meta']['page_number']})" for item in retrieved_chunks])
+    system_instruction = f"""You are Manak Setu (मानक सेतु), the official AI-powered compliance auditor for the Bureau of Indian Standards (BIS).
+CRITICAL OBJECTIVE: Analyze the uploaded media (product label, nameplate, ISI mark, gold/silver hallmark, test certificate, or invoice) and answer the user query in accordance with official Indian Standards and BIS regulations.
+- Inspect visible markings: Check for the BIS Standard Mark (triangle / ISI monogram), 7-digit CM/L license number, 6-digit Hallmark Unique Identification (HUID) alphanumeric code, purity designations (e.g. 22K916), or relevant IS number.
+- When technical standard chunks are provided in the Context below, ground your compliance assessment strictly in those facts.
+- If the image lacks clear markings or is blurry, explain clearly what details are missing to confirm compliance.
+- Never claim an item is definitively verified in the central BIS database solely from an image; advise that formal license/HUID verification requires the official BIS Care app or Manakonline portal.{lang_directive}
 
-    system_instruction = f"""You are a strict Bureau of Indian Standards (BIS) compliance auditor.
-    CRITICAL RULE: Analyze the uploaded media and answer the query SOLELY using the facts directly stated in the Context below.
-    - Do NOT extrapolate, assume, or use any prior training knowledge.
-    - If the Context does not explicitly contain the answer, reply EXACTLY with:
-    "This information is not present in the indexed BIS standard documentation."{lang_directive}
-
-    Context:\n{context_text}"""
+Indexed BIS Context:
+{context_text}"""
 
     media_part = types.Part.from_bytes(data=file_bytes, mime_type=mime_type)
     text_part = types.Part.from_text(text=message)
@@ -1008,13 +1509,25 @@ async def multimodal_chat_endpoint(
         history.append({"role": "user", "text": f"[Uploaded {file.filename}]: {message}"})
         history.append({"role": "model", "text": response.text})
 
+        # Sanitize citations: remove internal ranking/distance metrics (Section 18.2) & preserve authentic metadata
+        citations_result = []
+        if retrieved_chunks:
+            for c in retrieved_chunks:
+                meta = dict(c.get('meta', {}))
+                meta.pop('distance', None)
+                meta.pop('score', None)
+                if 'text' not in meta or not meta['text']:
+                    meta['text'] = c.get('text', '')
+                citations_result.append(meta)
+
         return {
             "filename": file.filename,
             "response": response.text,
-            "citations": [c['meta'] for c in retrieved_chunks]
+            "citations": citations_result
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error in /chat/multimodal endpoint: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="An error occurred while processing multimodal request. Please try again.")
 
 
 
@@ -1052,6 +1565,68 @@ async def clear_chat_history_endpoint(request: Request, session_id: Optional[str
         chat_sessions[user_id] = []
     return {"message": "Chat history cleared"}
 
+class ChatTranslateRequest(BaseModel):
+    texts: List[str]
+    target_language: str
+    source_language: Optional[str] = "en"
+
+@app.post("/api/chat/translate")
+async def translate_chat_endpoint(req: ChatTranslateRequest):
+    if not req.texts:
+        return {"translations": []}
+
+    target = req.target_language.lower().strip()
+    if target not in ["hi", "bn", "en"]:
+        target = "en"
+
+    # If source and target are the same, return texts immediately
+    if req.source_language and req.source_language.lower().strip() == target:
+        return {"translations": req.texts}
+
+    lang_names = {
+        "hi": "Hindi (हिन्दी) in Devanagari script",
+        "bn": "Bengali (বাংলা) in Bengali script",
+        "en": "clear, professional English"
+    }
+    target_lang_str = lang_names.get(target, "English")
+
+    translation_prompt = f"""You are a specialized translator for the Bureau of Indian Standards (BIS) technical compliance portal.
+TASK: Translate the provided list of texts into {target_lang_str}.
+
+STRICT PRESERVATION RULES:
+1. PRESERVE IDENTIFIERS: You MUST preserve all official Indian Standard numbers (e.g., 'IS 302', 'IS 302-2-3', 'IS 368:2014', 'IS 1417', 'IS 2112', 'IS 10500', 'IEC 60335-2-3'), clause identifiers ('Clause 7.1', 'Clause 24', 'Table 1'), statutory acronyms ('QCO', 'ISI', 'CRS', 'HUID', 'FMCS', 'BIS', 'NABL', 'STI'), monetary amounts, numbers, URLs, and official portal names ('Manakonline', 'e-BIS', 'BIS Care') in their exact Roman/Arabic alphanumeric format without translation or alteration.
+2. PRESERVE CITATIONS: Keep all cited source document titles and page references in their original Roman format.
+3. NATURAL TRANSLATION: Translate all conversational, explanatory, and informational prose naturally and accurately into fluent, professional {target_lang_str}.
+4. OUTPUT FORMAT: Return a valid JSON array of strings corresponding 1-to-1 with the input texts. Return ONLY valid JSON, with NO surrounding markdown or backticks.
+
+Input texts to translate:
+{json.dumps(req.texts, ensure_ascii=False)}"""
+
+    try:
+        resp = generate_gemini_content(
+            contents=[types.Content(role="user", parts=[types.Part.from_text(text=translation_prompt)])],
+            temperature=0.0
+        )
+        cleaned = resp.text.strip()
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:]
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:]
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3]
+        cleaned = cleaned.strip()
+
+        translated_list = json.loads(cleaned)
+        if isinstance(translated_list, list) and len(translated_list) == len(req.texts):
+            return {"translations": translated_list}
+        elif isinstance(translated_list, list):
+            return {"translations": translated_list}
+        else:
+            return {"translations": [cleaned] if len(req.texts) == 1 else req.texts}
+    except Exception as e:
+        logger.error(f"[chat/translate error]: {e}", exc_info=True)
+        return {"translations": req.texts, "error": "Translation service temporarily unavailable"}
+
 class ProductGuideResolveRequest(BaseModel):
     query: str
     product_name: Optional[str] = None
@@ -1062,10 +1637,17 @@ class ProductGuideResolveRequest(BaseModel):
 
 @app.post("/api/product-guide/resolve")
 async def resolve_product_guide(req: ProductGuideResolveRequest):
-    search_term = (req.product_name or req.query).strip()
-    p_lower = search_term.lower()
     conn = get_db()
     cur = conn.cursor()
+    try:
+        return await _resolve_product_guide_core(req, conn, cur)
+    finally:
+        cur.close()
+        conn.close()
+
+async def _resolve_product_guide_core(req: ProductGuideResolveRequest, conn, cur):
+    search_term = (req.product_name or req.query).strip()
+    p_lower = search_term.lower()
 
     confidence_level = "HIGH"
     text_standard_id = None
@@ -1226,8 +1808,6 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
             validation_reason = f"Confirmed via BIS official documents — '{search_term.title()}' is covered under {standard_number}: {standard_title}."
 
     if not text_standard_id:
-        cur.close()
-        conn.close()
         msg = "No details available yet. This information will be updated in future."
         if req.language == "hi":
             msg = "अभी कोई विवरण उपलब्ध नहीं है। यह जानकारी भविष्य में अपडेट की जाएगी।"
@@ -1469,16 +2049,18 @@ async def resolve_product_guide(req: ProductGuideResolveRequest):
 async def get_standards_options():
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT id, title FROM bis_standards 
-        WHERE id NOT ILIKE 'Guidance%' 
-          AND id NOT ILIKE 'Transition%' 
-          AND id NOT ILIKE '%AMENDMENT%'
-        ORDER BY id ASC;
-    """)
-    rows = cur.fetchall()
-    cur.close()
-    conn.close()
+    try:
+        cur.execute("""
+            SELECT id, title FROM bis_standards 
+            WHERE id NOT ILIKE 'Guidance%' 
+              AND id NOT ILIKE 'Transition%' 
+              AND id NOT ILIKE '%AMENDMENT%'
+            ORDER BY id ASC;
+        """)
+        rows = cur.fetchall()
+    finally:
+        cur.close()
+        conn.close()
 
     options = []
     for r in rows:
@@ -1529,6 +2111,13 @@ async def get_standards_options():
 async def get_testing_and_labs(standard_id: str):
     conn = get_db()
     cur = conn.cursor()
+    try:
+        return _get_testing_and_labs_core(conn, cur, standard_id)
+    finally:
+        cur.close()
+        conn.close()
+
+def _get_testing_and_labs_core(conn, cur, standard_id: str):
 
     # Step 2 selected standard remains canonical (Requirement 9)
     # Match standard in standard_tests using robust normalization (Requirements 2, 4, 6, 7)
@@ -1645,8 +2234,6 @@ async def get_testing_and_labs(standard_id: str):
                 "source_page": gr[7]
             })
 
-    cur.close()
-    conn.close()
     has_verified_data = bool(matched_test_std or matched_lab_std)
     return {
         "standard_id": standard_id,
@@ -1658,6 +2245,36 @@ async def get_testing_and_labs(standard_id: str):
         "laboratories": labs,
         "grouping_rules": groups
     }
+
+@app.get("/api/standards/{standard_id}/documents")
+async def get_standard_documents(standard_id: str):
+    conn = get_db()
+    cur = conn.cursor()
+    docs = []
+    matched_doc_std = None
+    try:
+        matched_doc_std = resolve_matching_standard_id(cur, "application_documents", standard_id)
+        if matched_doc_std:
+            cur.execute("""
+                SELECT id, document_name, description, required_status, applicable_when, responsible_party, source_url
+                FROM application_documents
+                WHERE standard_id = %s
+                ORDER BY id ASC;
+            """, (matched_doc_std,))
+            rows = cur.fetchall()
+            for r in rows:
+                docs.append({
+                    "id": r[0],
+                    "document_name": r[1],
+                    "description": r[2],
+                    "required_status": r[3],
+                    "applicable_when": r[4],
+                    "responsible_party": r[5],
+                    "source_url": r[6]
+                })
+    finally:
+        cur.close()
+        conn.close()
     return {"standard_id": standard_id, "matched_standard_id": matched_doc_std, "documents": docs}
 
 @app.post("/api/documents/scan")
@@ -1679,84 +2296,196 @@ async def scan_document_endpoint(
         raise HTTPException(status_code=400, detail="Uploaded file is empty.")
 
     # 2. Validate File Format & Safe Filename
-    allowed_extensions = {".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx"}
+    allowed_extensions = {".pdf", ".png", ".jpg", ".jpeg", ".doc", ".docx", ".txt"}
     filename = file.filename or "uploaded_document"
     ext = os.path.splitext(filename)[1].lower()
     if ext not in allowed_extensions:
         raise HTTPException(
             status_code=400, 
-            detail=f"Unsupported file format '{ext}'. Permitted formats: PDF, PNG, JPG, JPEG, DOC, DOCX."
+            detail=f"Unsupported file format '{ext}'. Permitted formats: PDF, PNG, JPG, JPEG, DOC, DOCX, TXT."
         )
 
-    # 3. Content Inspection & Compliance Pre-Audit
+    # 3. Content Extraction (PyMuPDF for PDF, PIL/pytesseract for images, utf-8 for text, zip for docx)
+    extracted_text = ""
+    is_visual_drawing = False
+    parse_error = None
+
+    if ext == ".pdf":
+        if fitz:
+            try:
+                doc_pdf = fitz.open(stream=file_bytes, filetype="pdf")
+                for page in doc_pdf:
+                    extracted_text += page.get_text() + "\n"
+                if not extracted_text.strip() and len(doc_pdf) > 0:
+                    is_visual_drawing = True
+                doc_pdf.close()
+            except Exception as e:
+                # Attempt raw text extraction fallback before failing
+                try:
+                    fallback_text = file_bytes.decode("utf-8", errors="ignore")
+                    if len(fallback_text.strip()) > 10:
+                        extracted_text = fallback_text
+                    else:
+                        logger.warning(f"PDF parsing error for {filename}: {e}")
+                        parse_error = "Corrupted or invalid PDF document."
+                except Exception:
+                    logger.warning(f"PDF parsing fallback failed for {filename}")
+                    parse_error = "Corrupted or invalid PDF document."
+        else:
+            extracted_text = file_bytes.decode("utf-8", errors="ignore")
+    elif ext in {".png", ".jpg", ".jpeg"}:
+        if Image:
+            try:
+                img = Image.open(io.BytesIO(file_bytes))
+                img.verify()
+                img = Image.open(io.BytesIO(file_bytes))
+                if pytesseract:
+                    try:
+                        extracted_text = pytesseract.image_to_string(img)
+                    except Exception:
+                        extracted_text = ""
+                is_visual_drawing = True
+            except Exception as e:
+                logger.warning(f"Image parsing error for {filename}: {e}")
+                parse_error = "Corrupted or invalid image file."
+        else:
+            is_visual_drawing = True
+    elif ext == ".txt":
+        extracted_text = file_bytes.decode("utf-8", errors="ignore")
+    elif ext in {".doc", ".docx"}:
+        try:
+            import zipfile
+            with zipfile.ZipFile(io.BytesIO(file_bytes)) as z:
+                xml_content = z.read("word/document.xml").decode("utf-8", errors="ignore")
+                extracted_text = re.sub(r'<[^>]+>', ' ', xml_content)
+        except Exception:
+            extracted_text = re.sub(r'[^\x20-\x7E\n\r\t]', ' ', file_bytes.decode('latin1', errors='ignore'))
+
+    # 4. Content Inspection & Compliance Verification
     doc_lower = document_title.lower()
+    text_clean = extracted_text.lower()
     checklist_matches = []
     discrepancies = []
-    
+
+    # Category Rules & Mandatory Semantic Criteria
     if "layout" in doc_lower:
-        checklist_matches = [
+        tokens = ["boundary", "premises", "shop floor", "layout", "storage", "raw material", "finished goods", "testing laboratory", "lab", "manufacturing area", "dimension", "sq ft", "sq m", "plot", "entry", "exit", "machinery placement", "factory", "floor plan"]
+        matches = [
             "Manufacturing premises boundary and shop floor demarcation identified",
             "In-house testing laboratory and testing bench locations clearly marked",
             "Raw material storage and finished goods segregation indicated"
         ]
-        status = "Verified"
-        summary_en = f"Layout drawing for '{document_title}' meets preliminary BIS factory audit architectural requirements."
-        summary_hi = f"'{document_title}' का लेआउट ड्राइंग बीआईएस कारखाना ऑडिट आवश्यकताओं को पूरा करता है।"
-        summary_bn = f"'{document_title}'-এর লেআউট অঙ্কন বিআইএস কারখানা অডিট প্রয়োজনীয়তা পূরণ করে।"
+        discrepancy_msg = f"Uploaded document does not contain required factory layout demarcations (premises boundary, shop floor, in-house testing laboratory, raw material/finished goods storage). Content appears unrelated or lacks architectural factory plans."
     elif "machinery" in doc_lower or "equipment" in doc_lower:
-        checklist_matches = [
+        tokens = ["machinery", "machine", "equipment", "capacity", "rating", "model", "specification", "manufacturing", "production", "serial", "make", "installed", "process", "kw", "hp", "output", "operation", "apparatus"]
+        matches = [
             "Manufacturing machinery capacity and electrical ratings specified",
             "In-house calibration validity schedule and log entries present",
             "Routine and acceptance test apparatus listed under relevant Indian Standard"
         ]
-        status = "Verified"
-        summary_en = f"Machinery/Equipment list for '{document_title}' verified against standard manufacturing capability requirements."
-        summary_hi = f"'{document_title}' के लिए मशीनरी/उपकरण सूची मानक निर्माण क्षमता आवश्यकताओं के अनुरूप सत्यापित है।"
-        summary_bn = f"'{document_title}'-এর জন্য যন্ত্রপাতি/সরঞ্জাম তালিকা মানক উৎপাদন ক্ষমতার প্রয়োজনীয়তার সাথে যাচাই করা হয়েছে।"
+        discrepancy_msg = f"Uploaded file does not contain a manufacturing machinery or equipment schedule with machine ratings, capacities, and operational specifications."
     elif "calibration" in doc_lower:
-        checklist_matches = [
+        tokens = ["calibration", "certificate", "accuracy", "validity", "tolerance", "traceability", "nabl", "instrument", "apparatus", "uncertainty", "test equipment", "gauge", "standard", "master", "date"]
+        matches = [
             "Valid NABL-traceable calibration certificate identified",
-            "Calibration validity date active within 1-year statutory window",
+            "Calibration validity date active within statutory window",
             "Measurement uncertainty and calibration apparatus tolerances recorded"
         ]
-        status = "Verified"
-        summary_en = f"Calibration certificate for '{document_title}' verified with active validity period."
-        summary_hi = f"'{document_title}' के लिए अंशांकन प्रमाण पत्र सक्रिय वैधता अवधि के साथ सत्यापित किया गया।"
-        summary_bn = f"'{document_title}'-এর জন্য ক্যালিব্রেশন সার্টিফিকেট সক্রিয় মেয়াদের সাথে যাচাই করা হয়েছে।"
+        discrepancy_msg = f"Uploaded document lacks instrument calibration parameters, active validity dates, or NABL traceability certification."
     elif "form" in doc_lower or "application" in doc_lower:
-        checklist_matches = [
+        tokens = ["form-v", "form v", "application", "declaration", "signatory", "authorized", "premises", "is ", "standard", "conformance", "factory address", "applicant", "undertaking", "bureau of indian standards"]
+        matches = [
             "Statutory Form-V structure and applicant declaration block present",
             "Manufacturing unit operational address and authorized signatory details matched",
             "Declaration of conformity with applicable Indian Standard acknowledged"
         ]
-        status = "Verified"
-        summary_en = f"Statutory application form for '{document_title}' verified for filing readiness."
-        summary_hi = f"'{document_title}' के लिए वैधानिक आवेदन पत्र दाखिल करने की तैयारी के लिए सत्यापित किया गया।"
-        summary_bn = f"'{document_title}'-এর জন্য সংবিধিবদ্ধ আবেদনপত্র জমা দেওয়ার প্রস্তুতির জন্য যাচাই করা হয়েছে।"
+        discrepancy_msg = f"Uploaded document lacks statutory Form-V declaration, authorized signatory credentials, or manufacturing unit address."
     elif "consent" in doc_lower or "pollution" in doc_lower or "noc" in doc_lower:
-        checklist_matches = [
+        tokens = ["pollution", "spcb", "consent to establish", "consent to operate", "noc", "air act", "water act", "environment", "cte", "cto", "board", "validity", "discharge", "emissions"]
+        matches = [
             "State Pollution Control Board (SPCB) Consent to Establish/Operate present",
             "Manufacturing category classification matched with pollution consent scope",
             "Validity period extends beyond preliminary application review window"
         ]
-        status = "Verified"
-        summary_en = f"Environmental consent / NOC for '{document_title}' verified for regulatory clearance."
-        summary_hi = f"'{document_title}' के लिए पर्यावरणीय सहमति / अनापत्ति प्रमाण पत्र विनियामक मंजूरी के लिए सत्यापित है।"
-        summary_bn = f"'{document_title}'-এর জন্য পরিবেশগত সম্মতি / এনওসি নিয়ন্ত্রক ছাড়পত্রের জন্য যাচাই করা হয়েছে।"
+        discrepancy_msg = f"Uploaded file lacks State Pollution Control Board (SPCB) consent numbers, CTE/CTO scope, or active statutory validity."
+    elif "brand" in doc_lower or "trademark" in doc_lower:
+        tokens = ["trademark", "brand", "registry", "certificate", "registration", "tm", "class", "intellectual property", "proprietor", "trade mark"]
+        matches = [
+            "Trademark registry certificate and brand ownership matched",
+            "Statutory classification category matches product application scope",
+            "Proprietor registration active on Trade Marks Registry"
+        ]
+        discrepancy_msg = f"Uploaded document does not contain Trade Marks Registry certificate, class categorization, or brand ownership details."
+    elif "personnel" in doc_lower or "qc" in doc_lower or "quality control" in doc_lower:
+        tokens = ["quality control", "qc", "in-charge", "qualification", "chemist", "engineer", "testing", "b.tech", "diploma", "personnel", "staff", "competence", "laboratory"]
+        matches = [
+            "Qualified testing in-charge / QC personnel details verified",
+            "Technical educational credentials and testing competence verified",
+            "Appointment authorization on factory letterhead confirmed"
+        ]
+        discrepancy_msg = f"Uploaded document does not confirm technical qualifications or appointment of in-house testing/QC personnel."
     else:
-        checklist_matches = [
+        tokens = ["specification", "standard", "test", "report", "compliance", "inspection", "bis", "quality", "drawing", "technical", "clause"]
+        matches = [
             "Document structure conforms to Bureau of Indian Standards filing guidelines",
             "Authorized signatory entity and date stamp verified",
             "Product standard reference aligns with regulatory scope"
         ]
-        status = "Verified"
-        summary_en = f"Technical document '{document_title}' verified for BIS compliance dossier."
-        summary_hi = f"तकनीकी दस्तावेज़ '{document_title}' बीआईएस अनुपालन डॉसियर के लिए सत्यापित है।"
-        summary_bn = f"প্রযুক্তিগত নথি '{document_title}' বিআইএস সম্মতি ডসিয়ারের জন্য যাচাই করা হয়েছে।"
+        discrepancy_msg = f"Uploaded document lacks technical specifications, standard references, or statutory authorization details."
 
-    if len(file_bytes) < 100:
+    # Mismatch / Unrelated Content Detection
+    unrelated_markers = ["recipe", "ingredients", "tablespoon", "baking", "cake", "grocery", "restaurant", "cinema", "movie", "lyrics", "song", "vacation", "gameplay", "lorem ipsum", "blog post"]
+    found_unrelated = [m for m in unrelated_markers if m in text_clean]
+
+    matched_tokens = [tok for tok in tokens if tok in text_clean]
+
+    if parse_error:
+        status = "Failed"
+        discrepancies = [parse_error]
+        summary_en = f"Unable to process '{document_title}': file appears corrupted or unreadable."
+        summary_hi = f"'{document_title}' को संसाधित करने में असमर्थ: फ़ाइल दूषित या अपठनीय प्रतीत होती है।"
+        summary_bn = f"'{document_title}' প্রক্রিয়া করতে অক্ষম: ফাইলটি দূষিত বা অপাঠ্য বলে মনে হচ্ছে।"
+    elif len(file_bytes) < 40:
         status = "Discrepancy"
         discrepancies = ["File size is unusually small; document may be corrupted or missing required content."]
+        summary_en = f"Potential discrepancy in '{document_title}': content appears incomplete or truncated."
+        summary_hi = f"'{document_title}' में संभावित विसंगति: सामग्री अधूरी या खंडित प्रतीत होती है।"
+        summary_bn = f"'{document_title}'-এ সম্ভাব্য অসঙ্গতি: বিষয়বস্তু অসম্পূর্ণ বা কাটা বলে মনে হচ্ছে।"
+    elif found_unrelated and len(matched_tokens) < 2:
+        status = "Discrepancy"
+        discrepancies = [discrepancy_msg, f"Content contains unrelated topics ({', '.join(found_unrelated[:2])})."]
+        summary_en = f"Discrepancy detected in '{document_title}': content does not match statutory compliance criteria."
+        summary_hi = f"'{document_title}' में विसंगति पाई गई: सामग्री वैधानिक अनुपालन मानदंडों से मेल नहीं खाती।"
+        summary_bn = f"'{document_title}'-এ অসঙ্গতি সনাক্ত হয়েছে: বিষয়বস্তু সংবিধিবদ্ধ সম্মতির মানদণ্ডের সাথে মেলে না।"
+    elif len(matched_tokens) >= 2:
+        status = "Verified"
+        checklist_matches = matches
+        summary_en = f"Statutory document '{document_title}' verified against preliminary BIS compliance requirements."
+        summary_hi = f"वैधानिक दस्तावेज़ '{document_title}' प्रारंभिक बीआईएस अनुपालन आवश्यकताओं के अनुसार सत्यापित है।"
+        summary_bn = f"সংবিধিবদ্ধ নথি '{document_title}' প্রাথমিক বিআইএস সম্মতি প্রয়োজনীয়তা অনুযায়ী যাচাই করা হয়েছে।"
+    elif len(text_clean.strip()) > 60 and len(matched_tokens) < 2:
+        # Document contains readable text, but failed requirement check
+        status = "Discrepancy"
+        discrepancies = [discrepancy_msg]
+        summary_en = f"Discrepancy detected in '{document_title}': content does not meet statutory criteria."
+        summary_hi = f"'{document_title}' में विसंगति पाई गई: सामग्री वैधानिक मानदंडों को पूरा नहीं करती।"
+        summary_bn = f"'{document_title}'-এ অসঙ্গতি সনাক্ত হয়েছে: বিষয়বস্তু সংবিধিবদ্ধ মানদণ্ড পূরণ করে না।"
+    elif is_visual_drawing or ext in {".pdf", ".png", ".jpg", ".jpeg"}:
+        # Visual blueprint, scanned diagram, or image without OCR text
+        status = "Verification Pending"
+        checklist_matches = [
+            "File integrity and format validated (non-corrupted file)",
+            "Visual drawing queued for physical scrutiny by BIS inspection officer"
+        ]
+        discrepancies = [
+            "Visual architectural drawing / blueprint requires physical scrutiny by BIS officer during preliminary factory inspection."
+        ]
+        summary_en = f"Document '{document_title}' successfully uploaded. Scanned drawing/blueprint queued for officer scrutiny during factory audit."
+        summary_hi = f"दस्तावेज़ '{document_title}' सफलतापूर्वक अपलोड हुआ। कारखाना ऑडिट के दौरान अधिकारी जांच के लिए कतारबद्ध।"
+        summary_bn = f"নথি '{document_title}' সফলভাবে আপলোড হয়েছে। কারখানা অডিটের সময় কর্মকর্তা তদন্তের জন্য সারিবদ্ধ।"
+    else:
+        status = "Discrepancy"
+        discrepancies = ["Document content appears insufficient or unreadable for statutory verification."]
         summary_en = f"Potential discrepancy in '{document_title}': content appears incomplete."
         summary_hi = f"'{document_title}' में संभावित विसंगति: सामग्री अधूरी प्रतीत होती है।"
         summary_bn = f"'{document_title}'-এ সম্ভাব্য অসঙ্গতি: বিষয়বস্তু অসম্পূর্ণ বলে মনে হচ্ছে।"
@@ -1767,12 +2496,14 @@ async def scan_document_endpoint(
         "Final legal acceptance and authenticity verification is performed by Bureau of Indian Standards inspection officers."
     )
 
+    confidence = 0.96 if status == "Verified" else (0.70 if status == "Verification Pending" else (0.10 if status == "Failed" else 0.35))
+
     return {
         "document_id": document_id,
         "filename": filename,
         "filesize": len(file_bytes),
         "status": status,
-        "confidence_score": 0.96 if status == "Verified" else 0.40,
+        "confidence_score": confidence,
         "summary": summary,
         "checklist_matches": checklist_matches,
         "discrepancies": discrepancies,
@@ -1783,28 +2514,31 @@ async def scan_document_endpoint(
 async def get_standard_process(standard_id: str):
     conn = get_db()
     cur = conn.cursor()
-    matched_proc_std = resolve_matching_standard_id(cur, "certification_process_steps", standard_id)
     steps = []
-    if matched_proc_std:
-        cur.execute("""
-            SELECT step_number, step_name, description, responsible_party, fee_type, fee_amount, source_url
-            FROM certification_process_steps
-            WHERE standard_id = %s
-            ORDER BY step_number ASC;
-        """, (matched_proc_std,))
-        rows = cur.fetchall()
-        for r in rows:
-            steps.append({
-                "step_number": r[0],
-                "step_name": r[1],
-                "description": r[2],
-                "responsible_party": r[3],
-                "fee_type": r[4] if r[4] != "None" else None,
-                "fee_amount": r[5] if r[5] != "None" else None,
-                "source_url": r[6]
-            })
-    cur.close()
-    conn.close()
+    matched_proc_std = None
+    try:
+        matched_proc_std = resolve_matching_standard_id(cur, "certification_process_steps", standard_id)
+        if matched_proc_std:
+            cur.execute("""
+                SELECT step_number, step_name, description, responsible_party, fee_type, fee_amount, source_url
+                FROM certification_process_steps
+                WHERE standard_id = %s
+                ORDER BY step_number ASC;
+            """, (matched_proc_std,))
+            rows = cur.fetchall()
+            for r in rows:
+                steps.append({
+                    "step_number": r[0],
+                    "step_name": r[1],
+                    "description": r[2],
+                    "responsible_party": r[3],
+                    "fee_type": r[4] if r[4] != "None" else None,
+                    "fee_amount": r[5] if r[5] != "None" else None,
+                    "source_url": r[6]
+                })
+    finally:
+        cur.close()
+        conn.close()
     return {"standard_id": standard_id, "matched_standard_id": matched_proc_std, "steps": steps}
 
 class EstimatorCalculateRequest(BaseModel):
@@ -1820,15 +2554,17 @@ async def calculate_fees(req: EstimatorCalculateRequest):
     conn = get_db()
     cur = conn.cursor()
 
-    cur.execute("SELECT fee_type, amount, unit, applicable_to, notes FROM bis_fees WHERE scheme = %s;", (req.scheme,))
-    fee_rows = cur.fetchall()
+    try:
+        cur.execute("SELECT fee_type, amount, unit, applicable_to, notes FROM bis_fees WHERE scheme = %s;", (req.scheme,))
+        fee_rows = cur.fetchall()
 
-    matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", req.standard_id)
-    cur.execute("SELECT AVG(testing_charge) FROM lab_test_charges WHERE standard_id = %s;", 
-                (matched_lab_std or req.standard_id,))
-    avg_lab_charge = cur.fetchone()[0] or 6000
-    cur.close()
-    conn.close()
+        matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", req.standard_id)
+        cur.execute("SELECT AVG(testing_charge) FROM lab_test_charges WHERE standard_id = %s;", 
+                    (matched_lab_std or req.standard_id,))
+        avg_lab_charge = cur.fetchone()[0] or 6000
+    finally:
+        cur.close()
+        conn.close()
 
     scale = req.industry_scale.lower()
     is_foreign = req.is_foreign
@@ -2025,29 +2761,32 @@ async def verify_consumer_mark(
     else:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT id, title FROM bis_standards WHERE id ILIKE %s OR title ILIKE %s LIMIT 1;", (f"%{code_clean}%", f"%{code_clean}%"))
-        row = cur.fetchone()
-        
+        row = None
         qco_info = None
-        if row:
-            core_h, _ = extract_core_id(row[0])
-            regex_pattern = get_core_regex(core_h)
-            cur.execute("""
-                SELECT q.qco_name, q.notification_number, q.effective_date 
-                FROM qco_standards qs
-                JOIN qcos q ON qs.qco_id = q.id
-                WHERE qs.standard_id = %s OR qs.standard_id ~* %s
-                LIMIT 1;
-            """, (row[0], regex_pattern))
-            qco_row = cur.fetchone()
-            if qco_row:
-                qco_info = {
-                    "qco_name": qco_row[0],
-                    "notification_number": qco_row[1],
-                    "effective_date": str(qco_row[2])
-                }
-        cur.close()
-        conn.close()
+        try:
+            cur.execute("SELECT id, title FROM bis_standards WHERE id ILIKE %s OR title ILIKE %s LIMIT 1;", (f"%{code_clean}%", f"%{code_clean}%"))
+            row = cur.fetchone()
+            
+            if row:
+                core_h, _ = extract_core_id(row[0])
+                regex_pattern = get_core_regex(core_h)
+                cur.execute("""
+                    SELECT q.qco_name, q.notification_number, q.effective_date 
+                    FROM qco_standards qs
+                    JOIN qcos q ON qs.qco_id = q.id
+                    WHERE qs.standard_id = %s OR qs.standard_id ~* %s
+                    LIMIT 1;
+                """, (row[0], regex_pattern))
+                qco_row = cur.fetchone()
+                if qco_row:
+                    qco_info = {
+                        "qco_name": qco_row[0],
+                        "notification_number": qco_row[1],
+                        "effective_date": str(qco_row[2])
+                    }
+        finally:
+            cur.close()
+            conn.close()
 
         found = bool(row)
         return {
@@ -2139,7 +2878,8 @@ async def save_user_product_guide(req: SaveGuideRequest, request: Request):
         return {"success": True, "id": str(guide_id), "message": "Product guide progress saved successfully"}
     except Exception as e:
         conn.rollback()
-        raise HTTPException(status_code=500, detail=f"Failed to save guide: {str(e)}")
+        logger.error(f"Failed to save guide: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to save product guide progress. Please try again later.")
     finally:
         cur.close()
         conn.close()

@@ -5,8 +5,9 @@ import App from './App'
 import './index.css'
 import { registerSW } from 'virtual:pwa-register'
 
-// Auto-register PWA service worker with auto-update
+// Auto-register PWA service worker with immediate registration and auto-update
 const updateSW = registerSW({
+  immediate: true,
   onNeedRefresh() {
     if (confirm('A new version of Manak Setu is available. Reload?')) {
       updateSW(true);

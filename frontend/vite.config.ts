@@ -9,36 +9,76 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'bis-logo.png', 'pwa-192x192.png', 'pwa-512x512.png', 'robots.txt'],
       manifest: {
+        id: '/',
         name: 'Manak Setu — BIS AI Compliance Portal',
         short_name: 'Manak Setu',
         description: 'Manak Setu: Official AI Compliance Guide for Indian Standards (IS), Product Certification Schemes, Laboratory Testing, and Quality Control Orders.',
-        start_url: '/',
+        start_url: '/?source=pwa',
         scope: '/',
         theme_color: '#0B3B60',
         background_color: '#F8FAFC',
         display: 'standalone',
-        orientation: 'portrait-primary',
+        orientation: 'any',
+        lang: 'en',
+        categories: ['government', 'business', 'productivity', 'utilities'],
         icons: [
           {
-            src: 'pwa-192x192.png',
+            src: '/pwa-192x192.png',
             sizes: '192x192',
-            type: 'image/png'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
-            src: 'pwa-512x512.png',
-            sizes: '512x512',
-            type: 'image/png'
-          },
-          {
-            src: 'pwa-512x512.png',
+            src: '/pwa-512x512.png',
             sizes: '512x512',
             type: 'image/png',
-            purpose: 'any maskable'
+            purpose: 'any'
+          },
+          {
+            src: '/pwa-512x512.png',
+            sizes: '512x512',
+            type: 'image/png',
+            purpose: 'maskable'
+          }
+        ],
+        shortcuts: [
+          {
+            name: 'Product Guide',
+            short_name: 'Guide',
+            description: 'Step-by-step BIS certification guide for your product',
+            url: '/?tab=home&source=pwa_shortcut',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+          },
+          {
+            name: 'Fee Estimator',
+            short_name: 'Estimator',
+            description: 'Estimate BIS application, inspection, and marking fees',
+            url: '/?tab=estimator&source=pwa_shortcut',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+          },
+          {
+            name: 'Consumer Help',
+            short_name: 'Consumer',
+            description: 'Verify CM/L marks and consumer grievance reporting',
+            url: '/?tab=consumer&source=pwa_shortcut',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
+          },
+          {
+            name: 'Hallmarking',
+            short_name: 'Hallmarking',
+            description: 'Gold & Silver hallmarking guidance and HUID verification',
+            url: '/?tab=hallmarking&source=pwa_shortcut',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }]
           }
         ]
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}'],
+        navigateFallback: '/index.html',
+        navigateFallbackDenylist: [/^\/api/, /^\/chat/, /^\/auth/],
+        cleanupOutdatedCaches: true,
+        clientsClaim: true,
+        skipWaiting: true,
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -67,7 +107,7 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: false
+        enabled: true
       }
     })
   ],

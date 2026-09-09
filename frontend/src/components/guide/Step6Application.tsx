@@ -1,7 +1,9 @@
 import React from 'react';
-import { ExternalLink, ArrowLeft, RotateCcw, Printer, Clock, CheckCircle2 } from 'lucide-react';
+import { ExternalLink, ArrowLeft, RotateCcw, Printer, Clock, CheckCircle2, Package, FileCheck, ShieldCheck, FlaskConical, FolderCheck, Send, Layers, Sparkles } from 'lucide-react';
 import { ApplicationMilestone } from '../../types/compliance';
+import { PageInfoButton } from '../common/PageInfoButton';
 import { useLanguage } from '../../context/LanguageContext';
+import { useProductContext } from '../../context/ProductContext';
 
 interface Step6ApplicationProps {
   productName: string;
@@ -16,8 +18,10 @@ export const Step6Application: React.FC<Step6ApplicationProps> = ({
   milestones,
   onPrev,
   onRestart,
+  onAskAI,
 }) => {
   const { t } = useLanguage();
+  const { guideData, productProfile } = useProductContext();
 
   const handlePrint = () => {
     window.print();
@@ -26,16 +30,134 @@ export const Step6Application: React.FC<Step6ApplicationProps> = ({
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="space-y-1">
-        <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-900 rounded">
-          Stage 6 of 6 • Final Licensing Roadmap
-        </span>
-        <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-          {t('s6Title')}
-        </h2>
-        <p className="text-xs sm:text-sm text-slate-500">
-          {t('s6Subtitle')}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase bg-emerald-100 text-emerald-900 rounded">
+            Stage 6 of 6 • Final Licensing Roadmap
+          </span>
+          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+            {t('s6Title')}
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500">
+            {t('s6Subtitle')}
+          </p>
+        </div>
+        <PageInfoButton
+          sectionId="section-application"
+          tooltip="Learn about the e-BIS Application Process in the Guide"
+          variant="light"
+          size="sm"
+        />
+      </div>
+
+      {/* 6-Stage Completed Certification Journey Summary Card (Prompt Section 9) */}
+      <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
+        <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-bis-100 text-bis-900">
+              <Layers className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
+                Completed Certification Journey Summary
+              </h3>
+              <p className="text-xs text-slate-500">
+                Product roadmap synthesized across all 6 statutory stages
+              </p>
+            </div>
+          </div>
+          <span className="hidden sm:inline-flex px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+            <span>Ready for Filing</span>
+          </span>
+        </div>
+
+        {/* 6-Stage Summary Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {/* Stage 1: Product Profile */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-slate-500">
+              <span>Stage 1 • Product</span>
+              <Package className="w-3.5 h-3.5 text-bis-700" />
+            </div>
+            <div className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+              {productProfile.name || productName || 'Selected Product'}
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug">
+              {productProfile.industryScale ? `${productProfile.industryScale.toUpperCase()} Scale` : 'Micro/SME'} • {productProfile.isForeign ? 'Foreign Unit' : 'Domestic Facility'}
+            </p>
+          </div>
+
+          {/* Stage 2: Applicable Standard */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-slate-500">
+              <span>Stage 2 • Standard</span>
+              <FileCheck className="w-3.5 h-3.5 text-bis-700" />
+            </div>
+            <div className="font-bold text-xs sm:text-sm text-bis-900 truncate">
+              {guideData?.standardDetails?.code || 'IS Standard'}
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug line-clamp-1">
+              {guideData?.standardDetails?.title || 'Indian Standard Specification'}
+            </p>
+          </div>
+
+          {/* Stage 3: Certification / QCO */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-slate-500">
+              <span>Stage 3 • Scheme</span>
+              <ShieldCheck className="w-3.5 h-3.5 text-bis-700" />
+            </div>
+            <div className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+              {guideData?.certificationDetails?.scheme || 'Scheme-I (ISI Mark)'}
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug">
+              {guideData?.certificationDetails?.isMandatory ? 'Mandatory under QCO' : 'Voluntary Conformity Assessment'}
+            </p>
+          </div>
+
+          {/* Stage 4: Testing & Labs */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-slate-500">
+              <span>Stage 4 • Testing & Labs</span>
+              <FlaskConical className="w-3.5 h-3.5 text-bis-700" />
+            </div>
+            <div className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+              {(guideData?.testingDetails?.routineTests?.length || 0) + (guideData?.testingDetails?.requiredTests?.length || 0)} Specified Tests
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug">
+              {guideData?.testingDetails?.laboratories?.length ? `${guideData.testingDetails.laboratories.length} Recognized Labs` : 'In-House & BIS Labs'}
+            </p>
+          </div>
+
+          {/* Stage 5: Documents */}
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-slate-500">
+              <span>Stage 5 • Documents</span>
+              <FolderCheck className="w-3.5 h-3.5 text-bis-700" />
+            </div>
+            <div className="font-bold text-xs sm:text-sm text-slate-900 truncate">
+              {guideData?.documentChecklist?.length || 6} Statutory Files
+            </div>
+            <p className="text-[11px] text-slate-500 leading-snug">
+              Form-V, Layout, Calibration & Machinery Schedules
+            </p>
+          </div>
+
+          {/* Stage 6: Application */}
+          <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-1">
+            <div className="flex items-center justify-between text-[11px] font-extrabold uppercase text-emerald-800">
+              <span>Stage 6 • Portal</span>
+              <Send className="w-3.5 h-3.5 text-emerald-700" />
+            </div>
+            <div className="font-bold text-xs sm:text-sm text-emerald-950 truncate">
+              e-BIS Manakonline
+            </div>
+            <p className="text-[11px] text-emerald-800 leading-snug">
+              Form-V Statutory Submission Ready
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Primary Manakonline CTA Card */}
@@ -130,6 +252,29 @@ export const Step6Application: React.FC<Step6ApplicationProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Ask AI Helper */}
+      {onAskAI && (
+        <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-slate-600">
+            Have questions about portal submission, factory audit, or licensing timelines?
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              onAskAI(
+                productName
+                  ? `What are the step-by-step application milestones and audit requirements for ${productName}?`
+                  : 'What are the step-by-step application milestones and audit requirements under e-BIS Manakonline?'
+              )
+            }
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-bis-900 hover:text-bis-700 transition-colors cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            Ask Manak Setu AI about Application Process
+          </button>
+        </div>
+      )}
 
       {/* Navigation Buttons */}
       <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-200">

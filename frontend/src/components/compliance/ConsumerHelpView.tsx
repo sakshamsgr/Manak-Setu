@@ -29,12 +29,15 @@ import { useLanguage } from '../../context/LanguageContext';
 import { sendChatMessage, sendMultimodalMessage, verifyConsumerMark, ConsumerVerificationResult } from '../../services/api';
 import { Citation } from '../../types/chat';
 import { CitationsEvidenceGrid } from '../chat/CitationEvidenceCard';
-import { HallmarkingView } from '../hallmarking/HallmarkingView';
-import { Gem } from 'lucide-react';
+import { PageInfoButton } from '../common/PageInfoButton';
+import { Gem, ArrowRight } from 'lucide-react';
 
-export const ConsumerHelpView: React.FC = () => {
+interface ConsumerHelpViewProps {
+  onNavigateToHallmarking?: () => void;
+}
+
+export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateToHallmarking }) => {
   const { t, language } = useLanguage();
-  const [activeSubTab, setActiveSubTab] = useState<'advisory' | 'hallmarking'>('advisory');
 
   // Verification Tool State
   const [verifyType, setVerifyType] = useState<'cml' | 'huid' | 'standard'>('cml');
@@ -111,7 +114,12 @@ export const ConsumerHelpView: React.FC = () => {
       setVerifyResult(res);
     } catch (err: any) {
       if (err.name === 'AbortError') return;
-      setVerifyError(err.message || t('common.apiUnavailable') || 'Verification failed. Please try again.');
+      const isTimeout = err.name === 'ApiTimeoutError' || err.isTimeout;
+      setVerifyError(
+        isTimeout
+          ? (t('common.aiTimeout') || 'Verification took longer than expected. Please retry.')
+          : (t('common.apiUnavailable') || 'Verification failed. Please try again.')
+      );
     } finally {
       setVerifyLoading(false);
       verifyAbortRef.current = null;
@@ -144,7 +152,18 @@ export const ConsumerHelpView: React.FC = () => {
       if (file) {
         res = await sendMultimodalMessage(sessionId, q, file, language, controller.signal);
       } else {
-        res = await sendChatMessage(sessionId, q, language, { tab: 'consumer' }, controller.signal);
+        res = await sendChatMessage(
+          sessionId, 
+          q, 
+          language, 
+          { 
+            page: 'consumer',
+            tab: 'consumer',
+            userType: 'consumer',
+            stage: 'Consumer Protection & Grievance',
+          }, 
+          controller.signal
+        );
       }
 
       setHistory((prev) => [
@@ -198,15 +217,23 @@ export const ConsumerHelpView: React.FC = () => {
             <span>BIS Consumer Protection & Grievance Gateway</span>
           </div>
 
-          <a
-            href="https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-colors"
-          >
-            <span>BIS Care Mobile Portal</span>
-            <ExternalLink className="w-3.5 h-3.5" />
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold border border-white/20 transition-colors"
+            >
+              <span>BIS Care Mobile Portal</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </a>
+            <PageInfoButton
+              sectionId="section-consumer-verification"
+              tooltip="Learn about Consumer Verification & BIS Care in the Guide"
+              variant="dark"
+              size="sm"
+            />
+          </div>
         </div>
 
         <div className="space-y-2 max-w-3xl">
@@ -219,36 +246,36 @@ export const ConsumerHelpView: React.FC = () => {
         </div>
       </div>
 
-      {/* Sub-Navigation Switcher */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
+      {/* Dedicated Hallmarking Portal Banner */}
+      <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50 to-amber-100/60 border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-amber-500 text-bis-950 shrink-0 shadow-xs">
+            <Gem className="w-5 h-5" />
+          </div>
+          <div>
+            <div className="text-xs sm:text-sm font-bold text-amber-950">
+              Looking for Gold or Silver Hallmarking? Visit our Dedicated Hallmarking Portal
+            </div>
+            <div className="text-[11px] text-amber-800">
+              Explore our dedicated Hallmarking portal for consumer checks, official IS 1417 / IS 2112 purity tables, and jeweller licensing guides.
+            </div>
+          </div>
+        </div>
         <button
-          onClick={() => setActiveSubTab('advisory')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSubTab === 'advisory'
-              ? 'bg-bis-900 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
+          type="button"
+          onClick={() => {
+            if (onNavigateToHallmarking) {
+              onNavigateToHallmarking();
+            } else {
+              window.dispatchEvent(new CustomEvent('manak_setu_navigate', { detail: { tab: 'hallmarking' } }));
+            }
+          }}
+          className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all shrink-0 cursor-pointer self-start sm:self-center"
         >
-          <UserCheck className="w-4 h-4" />
-          <span>Consumer Advisory & Grievance</span>
-        </button>
-        <button
-          onClick={() => setActiveSubTab('hallmarking')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeSubTab === 'hallmarking'
-              ? 'bg-amber-500 text-bis-950 shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          <Gem className="w-4 h-4 text-amber-600" />
-          <span>Gold & Silver Hallmarking (HUID)</span>
+          <span>Dedicated Hallmarking Portal</span>
+          <ArrowRight className="w-3.5 h-3.5" />
         </button>
       </div>
-
-      {activeSubTab === 'hallmarking' ? (
-        <HallmarkingView />
-      ) : (
-        <>
           {/* Interactive Mark & Licence Verifier Tool */}
           <div className="p-6 sm:p-8 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-5">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
@@ -436,9 +463,19 @@ export const ConsumerHelpView: React.FC = () => {
             )}
 
             {verifyError && (
-              <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{verifyError}</span>
+              <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center justify-between gap-3 animate-fade-in shadow-xs">
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                  <span>{verifyError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleVerify()}
+                  className="px-2.5 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[11px] flex items-center gap-1 transition-colors shrink-0 cursor-pointer shadow-xs"
+                >
+                  <RefreshCw className="w-3 h-3" />
+                  <span>{t('common.retry') || 'Retry'}</span>
+                </button>
               </div>
             )}
           </div>
@@ -735,8 +772,6 @@ export const ConsumerHelpView: React.FC = () => {
               </button>
             </form>
           </div>
-        </>
-      )}
     </div>
   );
 };

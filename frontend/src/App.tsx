@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 
 // Contexts
@@ -21,15 +21,76 @@ import { ProductCertificationGuide } from './components/guide/ProductCertificati
 import { TrustStatsSection } from './components/home/TrustStatsSection';
 import { FeeEstimatorView } from './components/estimator/FeeEstimatorView';
 import { ConsumerHelpView } from './components/compliance/ConsumerHelpView';
+import { HallmarkingView } from './components/hallmarking/HallmarkingView';
+import { InfoGuideView } from './components/info/InfoGuideView';
 
 // Hooks & Assistant
 import { useChat } from './hooks/useChat';
 import { usePWAInstall } from './hooks/usePWAInstall';
 import { PersistentAiAssistant, PersistentAssistantContext } from './components/chat/PersistentAiAssistant';
 
+const getInitialTab = (): MainNavTab => {
+  if (typeof window === 'undefined') return 'home';
+  const hash = window.location.hash.replace('#', '').toLowerCase();
+  if (hash.startsWith('info') || hash === 'hallmarking' || hash === 'estimator' || hash === 'consumer' || hash === 'home') {
+    return (hash.startsWith('info') ? 'info' : hash) as MainNavTab;
+  }
+  const params = new URLSearchParams(window.location.search);
+  const tabParam = params.get('tab')?.toLowerCase();
+  if (tabParam === 'hallmarking' || tabParam === 'estimator' || tabParam === 'consumer' || tabParam === 'home' || tabParam === 'info') {
+    return tabParam as MainNavTab;
+  }
+  const saved = sessionStorage.getItem('bis_active_tab');
+  if (saved === 'hallmarking' || saved === 'estimator' || saved === 'consumer' || saved === 'home' || saved === 'info') {
+    return saved as MainNavTab;
+  }
+  return 'home';
+};
+
 const AuthenticatedAppContent: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<MainNavTab>('home');
+  const [activeTab, setActiveTabState] = useState<MainNavTab>(getInitialTab);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+
+  const setActiveTab = (tab: MainNavTab) => {
+    setActiveTabState(tab);
+    try {
+      sessionStorage.setItem('bis_active_tab', tab);
+      const currentHash = window.location.hash.replace('#', '').toLowerCase();
+      if (!currentHash.startsWith(tab)) {
+        window.location.hash = tab;
+      }
+    } catch {}
+  };
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash.replace('#', '').toLowerCase();
+      if (hash.startsWith('info') || hash === 'hallmarking' || hash === 'estimator' || hash === 'consumer' || hash === 'home') {
+        const targetTab = (hash.startsWith('info') ? 'info' : hash) as MainNavTab;
+        setActiveTabState(targetTab);
+        try {
+          sessionStorage.setItem('bis_active_tab', targetTab);
+        } catch {}
+      }
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    
+    const handleCustomNav = (e: Event) => {
+      const customEvent = e as CustomEvent<{ tab: MainNavTab; sectionId?: string }>;
+      if (customEvent.detail?.tab) {
+        setActiveTabState(customEvent.detail.tab);
+        try {
+          sessionStorage.setItem('bis_active_tab', customEvent.detail.tab);
+        } catch {}
+      }
+    };
+    window.addEventListener('manak_setu_navigate', handleCustomNav);
+
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+      window.removeEventListener('manak_setu_navigate', handleCustomNav);
+    };
+  }, []);
   
   const {
     sessions, activeSession, activeSessionId, setActiveSessionId, createNewSession,
@@ -51,19 +112,41 @@ const AuthenticatedAppContent: React.FC = () => {
     setIsAssistantOpen(true);
     if (prompt) {
       sendChatMessage(prompt, {
+        page: activeTab,
         tab: activeTab,
+        stage: activeTab === 'home' ? activeStep : undefined,
+        product: productProfile?.name || guideData?.productProfile?.name,
         product_name: productProfile?.name || guideData?.productProfile?.name,
+        standardId: guideData?.standardDetails?.code,
+        standard_id: guideData?.standardDetails?.code,
+        standardName: guideData?.standardDetails?.title,
+        standard_name: guideData?.standardDetails?.title,
         active_step: activeStep,
         industry_scale: productProfile?.industryScale,
+        location: productProfile?.manufacturingLocation,
       });
     }
   };
 
   const assistantContext: PersistentAssistantContext = {
     tab: activeTab,
+    page: activeTab,
+    stage: activeTab === 'home' ? activeStep : undefined,
+    product: productProfile?.name || guideData?.productProfile?.name,
     productName: productProfile?.name || guideData?.productProfile?.name,
+    standardId: guideData?.standardDetails?.code,
+    standardName: guideData?.standardDetails?.title,
     activeStep: activeStep,
     industryScale: productProfile?.industryScale,
+    location: productProfile?.manufacturingLocation,
+    userType: activeTab === 'hallmarking' ? 'consumer' : undefined,
+    metal: activeTab === 'hallmarking' ? 'gold' : undefined,
+    scheme: guideData?.certificationDetails?.scheme,
+    qcoNotification: guideData?.certificationDetails?.qcoNotification,
+    isMandatory: guideData?.certificationDetails?.isMandatory,
+    routineTestsCount: guideData?.testingDetails?.routineTests?.length ?? guideData?.testingDetails?.requiredTests?.length,
+    labsCount: guideData?.testingDetails?.laboratories?.length,
+    documentsCount: Array.isArray(guideData?.documentChecklist) ? guideData.documentChecklist.length : undefined,
   };
 
   return (
@@ -98,7 +181,9 @@ const AuthenticatedAppContent: React.FC = () => {
           </div>
         )}
         {activeTab === 'estimator' && <FeeEstimatorView onAskAIAboutEstimate={handleStartChatPrompt} />}
-        {activeTab === 'consumer' && <ConsumerHelpView />}
+        {activeTab === 'consumer' && <ConsumerHelpView onNavigateToHallmarking={() => setActiveTab('hallmarking')} />}
+        {activeTab === 'hallmarking' && <HallmarkingView onOpenAssistant={handleStartChatPrompt} />}
+        {activeTab === 'info' && <InfoGuideView onOpenAssistant={handleStartChatPrompt} onSelectNavTab={setActiveTab} />}
       </main>
 
       <Footer />

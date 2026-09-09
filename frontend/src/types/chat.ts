@@ -3,6 +3,13 @@ export interface Citation {
   page: number;
   text?: string;
   distance?: number;
+  // Authentic metadata & official portal linkages (Phase 18)
+  title?: string;
+  document_title?: string;
+  url?: string;
+  source_url?: string;
+  pdf_url?: string;
+  source?: string;
   // Backend alternate field aliases for seamless compatibility
   standard_id?: string;
   page_number?: number;
@@ -12,6 +19,8 @@ export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
+  originalLanguage?: string;
+  translations?: Record<string, string>;
   citations?: Citation[];
   timestamp: number;
   attachmentName?: string;

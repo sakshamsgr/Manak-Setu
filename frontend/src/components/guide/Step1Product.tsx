@@ -1,5 +1,5 @@
 import React from 'react';
-import { Package, Building2, ArrowRight, Lock } from 'lucide-react';
+import { Package, Building2, ArrowRight, Lock, Sparkles } from 'lucide-react';
 import { ProductProfile } from '../../types/compliance';
 import { useLanguage } from '../../context/LanguageContext';
 import { useProductContext } from '../../context/ProductContext';
@@ -15,6 +15,7 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
   productProfile,
   onUpdateProfile,
   onNext,
+  onAskAI,
 }) => {
   const { t } = useLanguage();
   
@@ -189,6 +190,29 @@ export const Step1Product: React.FC<Step1ProductProps> = ({
             </label>
           </div>
         </div>
+
+        {/* Ask AI Helper */}
+        {onAskAI && (
+          <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+            <p className="text-xs text-slate-600">
+              Need assistance with product classification, industry scale, or concessions?
+            </p>
+            <button
+              type="button"
+              onClick={() =>
+                onAskAI(
+                  productProfile.name
+                    ? `What are the product profile requirements and scale concessions for ${productProfile.name}?`
+                    : 'How do I determine the product category and scale concessions for BIS certification?'
+                )
+              }
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-bis-900 hover:text-bis-700 transition-colors cursor-pointer"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              Ask Manak Setu AI about Product Profile
+            </button>
+          </div>
+        )}
 
         {/* Continue Action */}
         <div className="flex justify-end pt-2">

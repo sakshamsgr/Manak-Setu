@@ -15,13 +15,16 @@ import {
   X,
   Loader2,
   AlertCircle,
+  RefreshCw,
   Phone,
   Mail,
   Globe,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Sparkles
 } from 'lucide-react';
 import { TestingDetails, LabItem } from '../../types/compliance';
+import { PageInfoButton } from '../common/PageInfoButton';
 import { useLanguage } from '../../context/LanguageContext';
 import { useProductContext } from '../../context/ProductContext';
 import { getRecommendedLaboratories, RecommendedLab } from '../../services/api';
@@ -39,6 +42,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
   testingDetails,
   onNext,
   onPrev,
+  onAskAI,
 }) => {
   const { t } = useLanguage();
   const { guideData } = useProductContext();
@@ -65,6 +69,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
   const [isLoadingLabs, setIsLoadingLabs] = useState<boolean>(false);
   const [geoError, setGeoError] = useState<string | null>(null);
   const [recommendedLabs, setRecommendedLabs] = useState<any[] | null>(null);
+  const [labsError, setLabsError] = useState<string | null>(null);
   const [activeLocationLabel, setActiveLocationLabel] = useState<string>(() => {
     return sessionStorage.getItem('bis_user_location') || '';
   });
@@ -79,6 +84,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
   // Fetch recommended laboratories from existing backend database
   const fetchRecommendations = useCallback(async (loc?: string, lat?: number, lng?: number) => {
     setIsLoadingLabs(true);
+    setLabsError(null);
     try {
       const res = await getRecommendedLaboratories({
         location: loc,
@@ -95,12 +101,18 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
           sessionStorage.setItem('bis_user_location', effectiveLoc);
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to fetch laboratory recommendations:', err);
+      const isTimeout = err.name === 'ApiTimeoutError' || err.isTimeout;
+      setLabsError(
+        isTimeout
+          ? (t('common.aiTimeout') || 'Laboratory search took longer than expected. Please retry.')
+          : (t('common.apiUnavailable') || 'Failed to load authorized laboratory listings. Please try again.')
+      );
     } finally {
       setIsLoadingLabs(false);
     }
-  }, [standardCode]);
+  }, [standardCode, t]);
 
   useEffect(() => {
     if (userLocation) {
@@ -319,16 +331,24 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
       )}
 
       {/* Header */}
-      <div className="space-y-1">
-        <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase bg-bis-100 text-bis-900 rounded">
-          Stage 4 of 6
-        </span>
-        <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-          {t('s4Title')}
-        </h2>
-        <p className="text-xs sm:text-sm text-slate-500">
-          {t('s4Subtitle')}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1">
+          <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase bg-bis-100 text-bis-900 rounded">
+            Stage 4 of 6
+          </span>
+          <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
+            {t('s4Title')}
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500">
+            {t('s4Subtitle')}
+          </p>
+        </div>
+        <PageInfoButton
+          sectionId="section-testing-labs"
+          tooltip="Learn about In-House SIT & Laboratory Testing in the Guide"
+          variant="light"
+          size="sm"
+        />
       </div>
 
       {/* Tabs Navigation */}
@@ -586,6 +606,21 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
               <Loader2 className="w-6 h-6 animate-spin text-indigo-600" />
               <p className="text-xs font-bold text-slate-700">Loading authorized laboratories from BIS LIMS...</p>
             </div>
+          ) : labsError ? (
+            <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fade-in shadow-xs">
+              <div className="flex items-center gap-2.5">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                <span className="text-xs sm:text-sm font-semibold">{labsError}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => fetchRecommendations(activeLocationLabel || userLocation || undefined)}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs self-start sm:self-center"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>{t('common.retry') || 'Retry'}</span>
+              </button>
+            </div>
           ) : displayedLabs.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
               {displayedLabs.map((lab) => {
@@ -809,6 +844,29 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
           </p>
         </div>
       </div>
+
+      {/* Ask AI Helper */}
+      {onAskAI && (
+        <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-slate-600">
+            Have questions about routine test parameters, STI frequencies, or recognized labs?
+          </p>
+          <button
+            type="button"
+            onClick={() =>
+              onAskAI(
+                productName
+                  ? `What are the testing requirements, routine tests, and recognized labs for ${productName}?`
+                  : 'What are the routine tests, acceptance tests, and laboratory requirements for BIS certification?'
+              )
+            }
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-bis-900 hover:text-bis-700 transition-colors cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+            Ask Manak Setu AI about Testing & Labs
+          </button>
+        </div>
+      )}
 
       {/* Navigation Buttons */}
       <div className="flex items-center justify-between pt-2">

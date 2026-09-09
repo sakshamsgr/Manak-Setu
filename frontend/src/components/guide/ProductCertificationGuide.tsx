@@ -25,6 +25,7 @@ import { Step3Certification } from './Step3Certification';
 import { Step4Testing } from './Step4Testing';
 import { Step5Documents } from './Step5Documents';
 import { Step6Application } from './Step6Application';
+import { PageInfoButton } from '../common/PageInfoButton';
 import { useLanguage } from '../../context/LanguageContext';
 
 interface ProductCertificationGuideProps {
@@ -77,6 +78,18 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
 
   const currentStepObj = steps.find((s) => s.id === activeStep) || steps[0];
 
+  const getStepSectionId = (step: number) => {
+    switch (step) {
+      case 1: return 'section-product-profile';
+      case 2: return 'section-applicable-standard';
+      case 3: return 'section-certification-qco';
+      case 4: return 'section-testing-labs';
+      case 5: return 'section-documents';
+      case 6: return 'section-application';
+      default: return 'section-product-guide-flow';
+    }
+  };
+
   const handlePrint = () => {
     window.print();
   };
@@ -123,7 +136,15 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Small 'i' Information Guide Button (Phase 13) */}
+          <PageInfoButton
+            sectionId={getStepSectionId(activeStep)}
+            tooltip={`Open Compliance Guide for Stage ${activeStep}: ${currentStepObj.label}`}
+            variant="light"
+            size="sm"
+          />
+
           {/* Save Progress Button */}
           <button
             onClick={handleSaveProgress}
@@ -272,6 +293,7 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
                 productProfile={productProfile}
                 onUpdateProfile={updateProductProfile}
                 onNext={() => setActiveStep(2)}
+                onAskAI={handleStepAskAI}
               />
             )}
             {activeStep === 2 && (

@@ -15,10 +15,24 @@ import { ChatInput } from './ChatInput';
 import { useLanguage } from '../../context/LanguageContext';
 
 export interface PersistentAssistantContext {
-  tab: 'home' | 'estimator' | 'consumer';
+  tab: 'home' | 'product-guide' | 'estimator' | 'consumer' | 'hallmarking' | 'standards' | string;
+  page?: string;
+  stage?: string | number;
+  product?: string;
   productName?: string;
+  standardId?: string;
+  standardName?: string;
+  userType?: 'consumer' | 'business' | string;
+  metal?: 'gold' | 'silver' | string;
+  location?: string;
   activeStep?: number;
   industryScale?: string;
+  scheme?: string;
+  qcoNotification?: string;
+  isMandatory?: boolean;
+  routineTestsCount?: number;
+  labsCount?: number;
+  documentsCount?: number;
 }
 
 interface PersistentAiAssistantProps {
@@ -74,7 +88,7 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
   activeSession,
   contextData,
 }) => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
 
   // Mobile viewport detection
   const [isMobile, setIsMobile] = useState<boolean>(() => {
@@ -384,28 +398,90 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
     };
   }, [isResizing, size, position]);
 
-  // Context-sensitive quick suggestions
+  // Context-sensitive quick suggestions (Phase 4: Page Awareness)
   const getContextualPrompts = () => {
-    if (contextData?.tab === 'home' && contextData.productName) {
+    const activePage = contextData?.page || contextData?.tab || 'home';
+    const prodName = contextData?.product || contextData?.productName;
+    const stageNum = contextData?.stage ?? contextData?.activeStep;
+
+    if (activePage === 'hallmarking') {
+      if (contextData?.userType === 'business') {
+        return [
+          'What is the 10-stage process for jewellers to get hallmarked?',
+          'Are jewellers with annual turnover under ₹40 lakh exempt?',
+          'How do I register my jewellery firm on Manakonline with zero fee?',
+        ];
+      }
       return [
-        `What testing parameters are compulsory for ${contextData.productName}?`,
-        `What documents are required for ${contextData.productName} BIS filing?`,
-        `What is the factory audit checklist for this product?`,
+        'How do I verify a 6-digit HUID code on gold jewellery?',
+        'What are the 3 mandatory marks for gold jewellery under IS 1417?',
+        'What compensation is a consumer entitled to under BIS Rule 49?',
       ];
     }
-    if (contextData?.tab === 'estimator') {
+    if (activePage === 'estimator') {
       return [
         'How is the 50% concession for Micro and Startup enterprises calculated?',
         'What are the mandatory inspection charges for Scheme-I?',
         'Are lab testing charges included in the BIS annual licence fee?',
       ];
     }
-    if (contextData?.tab === 'consumer') {
+    if (activePage === 'consumer') {
       return [
-        'How do I verify a 6-digit HUID code on gold jewellery via the BIS Care app?',
+        'How do I verify an ISI mark and 7-digit CM/L number on BIS Care?',
         'What should a consumer do if an ISI-certified product is defective?',
-        'Which everyday products legally require mandatory ISI certification?',
+        'How do I file an official grievance with BIS enforcement officers?',
       ];
+    }
+    if (activePage === 'home' || activePage === 'product-guide') {
+      if (stageNum === 1) {
+        return [
+          prodName ? `What are the product profile and manufacturing requirements for ${prodName}?` : 'How do I determine the product category and scope for BIS certification?',
+          prodName ? `Are there scale concessions (Micro/Startup) for ${prodName}?` : 'What fee concessions are available for Micro and Startup enterprises?',
+          prodName ? `Does ${prodName} fall under Domestic certification or FMCS?` : 'What is the difference between Domestic licence and FMCS for foreign manufacturers?',
+        ];
+      }
+      if (stageNum === 2) {
+        return [
+          prodName ? `Which Indian Standard applies to ${prodName} and what is its scope?` : 'How do I find the correct Indian Standard code for my product?',
+          prodName ? `Are there recent amendments or revisions for ${prodName}'s standard?` : 'What do standard amendments and dual-numbering mean in BIS standards?',
+          prodName ? `Why does this specific standard apply to ${prodName}?` : 'How does BIS decide which standard applies to a product?',
+        ];
+      }
+      if (stageNum === 3) {
+        return [
+          prodName ? `Is ${prodName} covered by a mandatory Quality Control Order (QCO)?` : 'Which products are covered under mandatory Quality Control Orders?',
+          prodName ? `Does ${prodName} come under Scheme-I (ISI Mark) or Scheme-II (CRS)?` : 'What is the difference between Scheme-I (ISI Mark) and Scheme-II (CRS)?',
+          prodName ? `What are the Gazette order deadlines and penalties for ${prodName}?` : 'What are the legal penalties for manufacturing without mandatory BIS licence?',
+        ];
+      }
+      if (stageNum === 4) {
+        return [
+          prodName ? `Which BIS-recognized laboratory can test ${prodName}?` : 'How do I find a BIS-recognized testing laboratory near me?',
+          prodName ? `What routine vs type tests are required for ${prodName}?` : 'What is the difference between factory routine tests and independent lab tests?',
+          prodName ? `What are the grouping guidelines for sample testing for ${prodName}?` : 'How does BIS grouping guidelines reduce testing costs for product varieties?',
+        ];
+      }
+      if (stageNum === 5) {
+        return [
+          prodName ? `What statutory documents are required for ${prodName} filing?` : 'What documents are required to apply for BIS certification?',
+          prodName ? `Is an equipment calibration certificate mandatory for ${prodName}?` : 'Why is NABL calibration mandatory for factory test equipment?',
+          prodName ? `What are the factory layout drawing requirements for ${prodName}?` : 'What details must be shown in the factory layout drawing for BIS audit?',
+        ];
+      }
+      if (stageNum === 6) {
+        return [
+          prodName ? `What are the statutory milestones for grant of licence for ${prodName}?` : 'What are the stages and milestones of the BIS certification process?',
+          prodName ? `What happens during the official BIS on-site factory audit for ${prodName}?` : 'What should a manufacturer prepare for the BIS factory audit?',
+          prodName ? `What is the timeline for grant of licence after test clearance for ${prodName}?` : 'How long does it take from application submission to grant of BIS licence?',
+        ];
+      }
+      if (prodName) {
+        return [
+          `What Indian Standard applies to ${prodName}?`,
+          `Is ${prodName} covered by a mandatory Quality Control Order (QCO)?`,
+          `What are the factory audit requirements for this product?`,
+        ];
+      }
     }
     return [
       'Which products have mandatory Quality Control Orders (QCO) in India?',
@@ -416,19 +492,66 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
 
   const contextualPrompts = getContextualPrompts();
 
-  // Build the payload context object passed to backend RAG
+  // Build the structured payload context object passed to backend RAG
   const getBackendContext = (): Record<string, any> => {
+    const pageVal = contextData?.page || contextData?.tab || 'home';
     const ctx: Record<string, any> = {
-      active_tab: contextData?.tab || 'home',
+      page: pageVal,
+      active_tab: pageVal,
+      tab: pageVal,
+      language,
     };
-    if (contextData?.productName) {
-      ctx.product_name = contextData.productName;
+    const prod = contextData?.product || contextData?.productName;
+    if (prod) {
+      ctx.product = prod;
+      ctx.product_name = prod;
     }
-    if (contextData?.activeStep) {
-      ctx.active_step = contextData.activeStep;
+    const stg = contextData?.stage ?? contextData?.activeStep;
+    if (stg !== undefined) {
+      ctx.stage = stg;
+      ctx.active_step = stg;
+    }
+    if (contextData?.standardId) {
+      ctx.standardId = contextData.standardId;
+      ctx.standard_id = contextData.standardId;
+    }
+    if (contextData?.standardName) {
+      ctx.standardName = contextData.standardName;
+      ctx.standard_name = contextData.standardName;
+    }
+    if (contextData?.userType) {
+      ctx.userType = contextData.userType;
+      ctx.user_type = contextData.userType;
+    }
+    if (contextData?.metal) {
+      ctx.metal = contextData.metal;
+    }
+    if (contextData?.location) {
+      ctx.location = contextData.location;
     }
     if (contextData?.industryScale) {
+      ctx.industryScale = contextData.industryScale;
       ctx.industry_scale = contextData.industryScale;
+    }
+    if (contextData?.scheme) {
+      ctx.scheme = contextData.scheme;
+    }
+    if (contextData?.qcoNotification) {
+      ctx.qcoNotification = contextData.qcoNotification;
+      ctx.qco_notification = contextData.qcoNotification;
+    }
+    if (contextData?.isMandatory !== undefined) {
+      ctx.isMandatory = contextData.isMandatory;
+      ctx.is_mandatory = contextData.isMandatory;
+    }
+    if (contextData?.routineTestsCount !== undefined) {
+      ctx.routineTestsCount = contextData.routineTestsCount;
+    }
+    if (contextData?.labsCount !== undefined) {
+      ctx.labsCount = contextData.labsCount;
+    }
+    if (contextData?.documentsCount !== undefined) {
+      ctx.documentsCount = contextData.documentsCount;
     }
     return ctx;
   };
@@ -515,31 +638,31 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
               {/* Corner Handles */}
               <div
                 onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('tl', e.clientX, e.clientY); }}
-                className="absolute -top-1.5 -left-1.5 w-4 h-4 cursor-nwse-resize z-50 group flex items-center justify-center"
+                className="absolute top-0 left-0 w-6 h-6 cursor-nwse-resize z-[60] group flex items-start justify-start p-1"
                 title="Resize"
               >
-                <div className="w-2 h-2 rounded-full bg-slate-400/0 group-hover:bg-indigo-500/60 transition-colors" />
+                <div className="w-3 h-3 rounded-tl-xl bg-slate-400/0 group-hover:bg-indigo-500/60 transition-colors" />
               </div>
 
               <div
                 onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('tr', e.clientX, e.clientY); }}
-                className="absolute -top-1.5 -right-1.5 w-4 h-4 cursor-nesw-resize z-50 group flex items-center justify-center"
+                className="absolute top-0 right-0 w-6 h-6 cursor-nesw-resize z-[60] group flex items-start justify-end p-1"
                 title="Resize"
               >
-                <div className="w-2 h-2 rounded-full bg-slate-400/0 group-hover:bg-indigo-500/60 transition-colors" />
+                <div className="w-3 h-3 rounded-tr-xl bg-slate-400/0 group-hover:bg-indigo-500/60 transition-colors" />
               </div>
 
               <div
                 onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('bl', e.clientX, e.clientY); }}
-                className="absolute -bottom-1.5 -left-1.5 w-4 h-4 cursor-nesw-resize z-50 group flex items-center justify-center"
+                className="absolute bottom-0 left-0 w-6 h-6 cursor-nesw-resize z-[60] group flex items-end justify-start p-1"
                 title="Resize"
               >
-                <div className="w-2 h-2 rounded-full bg-slate-400/0 group-hover:bg-indigo-500/60 transition-colors" />
+                <div className="w-3 h-3 rounded-bl-xl bg-slate-400/0 group-hover:bg-indigo-500/60 transition-colors" />
               </div>
 
               <div
                 onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('br', e.clientX, e.clientY); }}
-                className="absolute -bottom-1 -right-1 w-5 h-5 cursor-nwse-resize z-50 group flex items-end justify-end p-0.5"
+                className="absolute bottom-0 right-0 w-6 h-6 cursor-nwse-resize z-[60] group flex items-end justify-end p-1.5"
                 title="Resize"
               >
                 {/* Subtle native-like corner grip dots / lines */}
@@ -551,22 +674,22 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
               {/* Edge Handles */}
               <div
                 onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('t', e.clientX, e.clientY); }}
-                className="absolute -top-1 left-4 right-4 h-2 cursor-ns-resize z-40"
+                className="absolute top-0 left-6 right-6 h-3 cursor-ns-resize z-[55]"
                 title="Resize"
               />
               <div
                 onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('b', e.clientX, e.clientY); }}
-                className="absolute -bottom-1 left-4 right-4 h-2 cursor-ns-resize z-40"
+                className="absolute bottom-0 left-6 right-6 h-3 cursor-ns-resize z-[55]"
                 title="Resize"
               />
               <div
                 onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('l', e.clientX, e.clientY); }}
-                className="absolute -left-1 top-4 bottom-4 w-2 cursor-ew-resize z-40"
+                className="absolute left-0 top-6 bottom-6 w-3 cursor-ew-resize z-[55]"
                 title="Resize"
               />
               <div
                 onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); handleResizeStart('r', e.clientX, e.clientY); }}
-                className="absolute -right-1 top-4 bottom-4 w-2 cursor-ew-resize z-40"
+                className="absolute right-0 top-6 bottom-6 w-3 cursor-ew-resize z-[55]"
                 title="Resize"
               />
             </>
@@ -627,15 +750,17 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
           <div className="px-3.5 py-1.5 bg-bis-50/70 border-b border-bis-100 flex items-center justify-between text-[11px] text-bis-900 shrink-0 select-none">
             <div className="flex items-center gap-1.5 font-medium truncate">
               <Tag className="w-3 h-3 text-bis-700 shrink-0" />
-              {contextData?.tab === 'home' && contextData.productName ? (
+              {contextData?.tab === 'hallmarking' ? (
+                <span>Hallmarking Context ({contextData.metal === 'silver' ? 'Silver IS 2112' : 'Gold IS 1417'})</span>
+              ) : (contextData?.tab === 'home' || contextData?.tab === 'product-guide') && (contextData.product || contextData.productName) ? (
                 <span className="truncate">
-                  <strong>{contextData.productName}</strong>
-                  {contextData.activeStep ? ` • Step ${contextData.activeStep}` : ''}
+                  <strong>{contextData.product || contextData.productName}</strong>
+                  {contextData.stage || contextData.activeStep ? ` • Stage ${contextData.stage || contextData.activeStep}` : ''}
                 </span>
               ) : contextData?.tab === 'estimator' ? (
                 <span>{t('assistant.contextEstimator') || 'Fee Estimator Context'}</span>
               ) : contextData?.tab === 'consumer' ? (
-                <span>{t('assistant.contextConsumer') || 'Consumer Help & Hallmarking Context'}</span>
+                <span>{t('assistant.contextConsumer') || 'Consumer Protection & Grievance Context'}</span>
               ) : (
                 <span>{t('assistant.contextGeneral') || 'General Standards Context'}</span>
               )}
