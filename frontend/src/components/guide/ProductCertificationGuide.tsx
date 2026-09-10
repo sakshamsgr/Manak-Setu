@@ -318,6 +318,7 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
             {activeStep === 4 && (
               <Step4Testing
                 productName={productProfile.name}
+                standardDetails={guideData.standardDetails}
                 testingDetails={guideData.testingDetails}
                 onNext={() => setActiveStep(5)}
                 onPrev={() => setActiveStep(3)}

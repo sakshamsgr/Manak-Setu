@@ -2168,47 +2168,33 @@ def _get_testing_and_labs_core(conn, cur, standard_id: str):
     matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", standard_id)
     labs = []
     if matched_lab_std:
-        # BULLETPROOF FETCHING: Prevents crash if contact columns are missing
-        try:
-            # Attempt to fetch with the NEW contact and map columns
-            cur.execute("""
-                SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, 
-                       c.testing_charge, c.currency, c.remarks, l.status,
-                       l.pincode, l.contact_email, l.contact_phone, l.website, l.latitude, l.longitude
-                FROM lab_test_charges c
-                JOIN laboratories l ON c.laboratory_id = l.id
-                WHERE c.standard_id = %s;
-            """, (matched_lab_std,))
-            lab_rows = cur.fetchall()
-            has_new_cols = True
-        except psycopg2.errors.UndefinedColumn:
-            # Fallback safely to old query if columns don't exist
-            conn.rollback()
-            cur.execute("""
-                SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, 
-                       c.testing_charge, c.currency, c.remarks, l.status
-                FROM lab_test_charges c
-                JOIN laboratories l ON c.laboratory_id = l.id
-                WHERE c.standard_id = %s;
-            """, (matched_lab_std,))
-            lab_rows = cur.fetchall()
-            has_new_cols = False
+        cur.execute("""
+            SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, 
+                   c.testing_charge, c.currency, c.remarks, l.status,
+                   l.phone, l.email, l.latitude, l.longitude
+            FROM lab_test_charges c
+            JOIN laboratories l ON c.laboratory_id = l.id
+            WHERE c.standard_id = %s;
+        """, (matched_lab_std,))
+        lab_rows = cur.fetchall()
 
         for lr in lab_rows:
             labs.append({
-                "id": lr[0], "lab_name": lr[1], "osl_code": lr[2],
-                "address": lr[3] or "Authoritative BIS Recognised Laboratory",
-                "city": lr[4] or "National Network", "state": lr[5] or "India",
-                "source_url": lr[6], "testing_charge": float(lr[7]) if lr[7] else None,
-                "currency": lr[8] or "INR", "remarks": lr[9] if lr[9] != "None" else None,
-                "status": lr[10] or "Operational",
-                # Safely map new fields
-                "pincode": lr[11] if has_new_cols else None, 
-                "contact_email": lr[12] if has_new_cols else None, 
-                "contact_phone": lr[13] if has_new_cols else None, 
-                "website": lr[14] if has_new_cols else None, 
-                "latitude": lr[15] if has_new_cols else None, 
-                "longitude": lr[16] if has_new_cols else None
+                "id": lr[0],
+                "lab_name": lr[1],
+                "osl_code": lr[2],
+                "address": lr[3],
+                "city": lr[4],
+                "state": lr[5],
+                "source_url": lr[6],
+                "testing_charge": float(lr[7]) if lr[7] is not None else None,
+                "currency": lr[8],
+                "remarks": lr[9] if lr[9] not in ("None", None) else None,
+                "status": lr[10],
+                "contact_phone": lr[11],
+                "contact_email": lr[12],
+                "latitude": float(lr[13]) if lr[13] is not None else None,
+                "longitude": float(lr[14]) if lr[14] is not None else None
             })
 
     # Match grouping rules
@@ -2971,67 +2957,59 @@ async def recommend_laboratories(
     conn = get_db()
     cur = conn.cursor()
     try:
-        text_id = (standard_id or "368").strip()
-        # Use teammate's robust resolver
-        matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", text_id)
-        effective_std = matched_lab_std or text_id
+        raw_std = (standard_id or "").strip()
+        matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", raw_std) if raw_std else None
 
-        # ---------------------------------------------------------
-        # BULLETPROOF FETCHING: Prevents crash if columns are missing
-        # ---------------------------------------------------------
-        try:
-            # Attempt to fetch with the NEW contact and map columns
+        rows = []
+        if raw_std:
+            # If standard is specified, strictly query laboratories associated with that standard in lab_test_charges
+            if matched_lab_std:
+                cur.execute("""
+                    SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
+                           c.testing_charge, c.currency, c.remarks, c.grade_type_size,
+                           l.phone, l.email, l.latitude, l.longitude
+                    FROM laboratories l
+                    JOIN lab_test_charges c ON c.laboratory_id = l.id AND c.standard_id = %s
+                    ORDER BY l.id;
+                """, (matched_lab_std,))
+                rows = cur.fetchall()
+            else:
+                # Standard specified but no laboratories in database for it
+                rows = []
+        else:
+            # No standard specified, return all laboratories
             cur.execute("""
                 SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
-                       c.testing_charge, c.currency, c.remarks, c.grade_type_size,
-                       l.pincode, l.contact_email, l.contact_phone, l.website, l.latitude, l.longitude
+                       NULL, NULL, NULL, NULL,
+                       l.phone, l.email, l.latitude, l.longitude
                 FROM laboratories l
-                LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND c.standard_id = %s
                 ORDER BY l.id;
-            """, (effective_std,))
+            """)
             rows = cur.fetchall()
-            has_new_cols = True
-            
-        except psycopg2.errors.UndefinedColumn:
-            # If columns don't exist in Supabase yet, fallback safely to old query!
-            conn.rollback() # Reset transaction state safely
-            cur.execute("""
-                SELECT l.id, l.lab_name, l.osl_code, l.address, l.city, l.state, l.source_url, l.status,
-                       c.testing_charge, c.currency, c.remarks, c.grade_type_size
-                FROM laboratories l
-                LEFT JOIN lab_test_charges c ON c.laboratory_id = l.id AND c.standard_id = %s
-                ORDER BY l.id;
-            """, (effective_std,))
-            rows = cur.fetchall()
-            has_new_cols = False
 
         matched_labs = {}
         for r in rows:
             lab_id = r[0]
-            name = r[1] or ""
+            name = r[1]
             osl = r[2]
-            address = r[3] or ""
-            city = r[4] or ""
-            state = r[5] or ""
+            address = r[3]
+            city = r[4]
+            state = r[5]
             source_url = r[6]
-            status = r[7] or "Operational"
-            charge = float(r[8]) if r[8] else None
-            currency = r[9] or "INR"
-            remarks = r[10] if r[10] != "None" else None
-            grade_type_size = r[11] or ""
-            
-            # Safely assign new fields only if they exist
-            pincode = r[12] if has_new_cols else None
-            contact_email = r[13] if has_new_cols else None
-            contact_phone = r[14] if has_new_cols else None
-            website = r[15] if has_new_cols else None
-            latitude = r[16] if has_new_cols else None
-            longitude = r[17] if has_new_cols else None
+            status = r[7]
+            charge = float(r[8]) if r[8] is not None else None
+            currency = r[9]
+            remarks = r[10] if r[10] not in ("None", None) else None
+            grade_type_size = r[11] if r[11] not in ("None", "-", None) else None
+            contact_phone = r[12]
+            contact_email = r[13]
+            latitude = float(r[14]) if r[14] is not None else None
+            longitude = float(r[15]) if r[15] is not None else None
 
             tier_score = 3
-            proximity_label = "National BIS Network"
+            proximity_label = None
 
-            combined_location_text = f"{city} {state} {address} {name}".lower()
+            combined_location_text = f"{city or ''} {state or ''} {address or ''} {name or ''}".lower()
 
             if loc_parts:
                 city_match = False
@@ -3061,42 +3039,39 @@ async def recommend_laboratories(
                     proximity_label = f"Regional (Same State: {state})"
                 else:
                     tier_score = 4
-                    proximity_label = "National Network (BIS Central/OSL)"
+                    proximity_label = "National Network"
             
             if lab_id not in matched_labs:
                 matched_labs[lab_id] = {
                     "id": lab_id,
                     "lab_name": name,
                     "osl_code": osl,
-                    "address": address or "Authoritative BIS Recognised Laboratory",
-                    "city": city or "National Network",
-                    "state": state or "India",
+                    "address": address,
+                    "city": city,
+                    "state": state,
                     "status": status,
-                    "source_url": source_url or "https://lims.bis.gov.in/home/search_is_number/",
+                    "source_url": source_url,
                     "testing_charge": charge,
                     "currency": currency,
                     "remarks": remarks,
                     "proximity_tier": proximity_label,
                     "tier_score": tier_score,
                     "testing_scopes": [],
-                    # Safe assignment
-                    "pincode": pincode,
                     "contact_email": contact_email,
                     "contact_phone": contact_phone,
-                    "website": website,
                     "latitude": latitude,
                     "longitude": longitude
                 }
 
-            scope = {
-                "testing_charge": charge,
-                "currency": currency,
-                "grade_type_size": grade_type_size,
-                "remarks": remarks
-            }
-
-            if scope not in matched_labs[lab_id]["testing_scopes"]:
-                matched_labs[lab_id]["testing_scopes"].append(scope)
+            if charge is not None or grade_type_size or remarks:
+                scope = {
+                    "testing_charge": charge,
+                    "currency": currency,
+                    "grade_type_size": grade_type_size,
+                    "remarks": remarks
+                }
+                if scope not in matched_labs[lab_id]["testing_scopes"]:
+                    matched_labs[lab_id]["testing_scopes"].append(scope)
 
         matched_labs = list(matched_labs.values())
         matched_labs.sort(key=lambda x: (x["tier_score"], x["testing_charge"] or 999999))
@@ -3114,4 +3089,4 @@ async def recommend_laboratories(
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run("api_server:app", host="127.0.0.1", port=8000, reload=True)
