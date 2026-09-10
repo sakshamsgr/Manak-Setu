@@ -105,8 +105,8 @@ export const en = {
     "continueBtn": "Continue to Testing Requirements"
   },
   "step4": {
-    "title": "Step 4: Mandatory Laboratory Testing",
-    "subtitle": "Required testing protocols, parameter limits, and laboratory facilities under the standard.",
+    "title": "Step 4: Testing & Laboratories",
+    "subtitle": "Find the tests required for your product and suitable BIS-recognized laboratories.",
     "requiredTests": "Key Routine & Acceptance Tests",
     "labInfo": "Testing Facility & Laboratory Network",
     "continueBtn": "Continue to Document Preparation"
@@ -260,8 +260,8 @@ export const en = {
   "s3VoluntaryNotice": "Voluntary Third-Party Quality Certification",
   "s3Conditions": "Key Compliance Conditions & Exemptions",
   "s3ContinueBtn": "Continue to Testing Requirements",
-  "s4Title": "Step 4: Mandatory Laboratory Testing",
-  "s4Subtitle": "Required testing protocols, parameter limits, and laboratory facilities under the standard.",
+  "s4Title": "Step 4: Testing & Laboratories",
+  "s4Subtitle": "Find the tests required for your product and suitable BIS-recognized laboratories.",
   "s4RequiredTests": "Key Routine & Acceptance Tests",
   "s4LabInfo": "Testing Facility & Laboratory Network",
   "s4ContinueBtn": "Continue to Document Preparation",
