@@ -2921,6 +2921,88 @@ async def delete_user_saved_guide(guide_id: str, request: Request):
         cur.close()
         conn.close()
 
+@app.get("/api/hallmarking-centres")
+async def get_hallmarking_centres(
+    state: Optional[str] = Query(None),
+    metal: Optional[str] = Query('gold'),
+    operative_only: bool = Query(True),
+    page: int = Query(1, ge=1),
+    limit: int = Query(12, ge=1, le=50),
+):
+    metal_name = (metal or 'gold').strip().lower()
+    if metal_name not in {'gold', 'silver'}:
+        raise HTTPException(status_code=400, detail="Metal must be either 'gold' or 'silver'.")
+
+    metal_column = 'gold_hallmarking' if metal_name == 'gold' else 'silver_hallmarking'
+    raw_state = (state or '').strip()
+
+    filters = [f"{metal_column} = TRUE"]
+    params: List[Any] = []
+
+    if raw_state and raw_state.lower() != 'all india':
+        filters.append("state ILIKE %s")
+        params.append(raw_state)
+
+    if operative_only:
+        filters.append("status ILIKE %s")
+        params.append('Operative')
+
+    where_clause = " AND ".join(filters)
+    count_query = f"SELECT COUNT(*) FROM public.huid_hallmarking_centres WHERE {where_clause};"
+    state_query = "SELECT DISTINCT state FROM public.huid_hallmarking_centres WHERE state IS NOT NULL AND state <> '' ORDER BY state ASC;"
+
+    conn = get_db()
+    cur = conn.cursor()
+    try:
+        cur.execute(count_query, params)
+        total_count = cur.fetchone()[0] or 0
+
+        cur.execute(state_query)
+        states = [row[0] for row in cur.fetchall() if row and row[0]]
+
+        offset = (page - 1) * limit
+        query = f"""
+            SELECT id, centre_name, city, district, state, address, status,
+                   recognized_for, telephone, email, gold_hallmarking, silver_hallmarking
+            FROM public.huid_hallmarking_centres
+            WHERE {where_clause}
+            ORDER BY state ASC, centre_name ASC
+            LIMIT %s OFFSET %s;
+        """
+        cur.execute(query, params + [limit, offset])
+        rows = cur.fetchall()
+
+        centres = []
+        for row in rows:
+            centre_id, centre_name, city, district, state_name, address, status_name, recognized_for, telephone, email, gold_flag, silver_flag = row
+            centres.append({
+                "id": str(centre_id),
+                "name": centre_name,
+                "city": city,
+                "district": district,
+                "state": state_name,
+                "address": address,
+                "status": status_name,
+                "recognized_for": recognized_for,
+                "telephone": telephone,
+                "email": email,
+                "gold_hallmarking": bool(gold_flag),
+                "silver_hallmarking": bool(silver_flag),
+            })
+
+        total_pages = max(1, (total_count + limit - 1) // limit) if total_count else 1
+        return {
+            "states": ["All India", *states],
+            "page": page,
+            "limit": limit,
+            "total": total_count,
+            "total_pages": total_pages,
+            "centres": centres,
+        }
+    finally:
+        cur.close()
+        conn.close()
+
 @app.get("/api/labs/recommend")
 async def recommend_laboratories(
     location: Optional[str] = Query(None),

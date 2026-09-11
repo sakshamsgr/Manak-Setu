@@ -639,6 +639,51 @@ export async function getRecommendedLaboratories(params: {
   return res.json();
 }
 
+export interface HallmarkingCentre {
+  id: string;
+  name: string;
+  city?: string | null;
+  district?: string | null;
+  state?: string | null;
+  address?: string | null;
+  status?: string | null;
+  recognized_for?: string | null;
+  telephone?: string | null;
+  email?: string | null;
+  gold_hallmarking?: boolean;
+  silver_hallmarking?: boolean;
+}
+
+export async function getHallmarkingCentres(params: {
+  state?: string;
+  metal?: 'gold' | 'silver';
+  operativeOnly?: boolean;
+  page?: number;
+  limit?: number;
+  signal?: AbortSignal;
+}): Promise<{
+  states: string[];
+  page: number;
+  limit: number;
+  total: number;
+  total_pages: number;
+  centres: HallmarkingCentre[];
+}> {
+  const queryParams = new URLSearchParams();
+  if (params.state) queryParams.append('state', params.state);
+  if (params.metal) queryParams.append('metal', params.metal);
+  queryParams.append('operative_only', String(params.operativeOnly !== false));
+  if (params.page) queryParams.append('page', String(params.page));
+  if (params.limit) queryParams.append('limit', String(params.limit));
+
+  const url = `${getApiBaseUrl()}/api/hallmarking-centres?${queryParams.toString()}`;
+  const res = await fetchWithTimeout(url, { signal: params.signal }, 15000);
+  if (!res.ok) {
+    throw new Error('Failed to load BIS Assaying & Hallmarking centres.');
+  }
+  return res.json();
+}
+
 /**
  * Chat History Language Translation API (Phase 8)
  * Translates an array of text snippets to the target language, preserving IS numbers and citations.
