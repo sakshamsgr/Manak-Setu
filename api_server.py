@@ -1656,6 +1656,27 @@ async def _resolve_product_guide_core(req: ProductGuideResolveRequest, conn, cur
     search_term = (req.product_name or req.query).strip()
     p_lower = search_term.lower()
 
+    # Safe normalization mapping layer for canonical product queries
+    PRODUCT_NORMALIZATION_MAP = {
+        "electric iron": "Electric Iron",
+        "iron": "Electric Iron",
+        "dry iron": "Electric Iron",
+        "steam iron": "Electric Iron",
+        "electric washing machine": "Electric Washing Machine",
+        "washing machine": "Electric Washing Machine",
+        "clothes washing machine": "Electric Washing Machine",
+        "split air conditioner": "Split Air Conditioner",
+        "air conditioner": "Split Air Conditioner",
+        "split ac": "Split Air Conditioner",
+        "ac": "Split Air Conditioner",
+        "electric fan": "Electric Fan",
+        "fan": "Electric Fan",
+        "ceiling fan": "Electric Fan",
+    }
+    if p_lower in PRODUCT_NORMALIZATION_MAP:
+        search_term = PRODUCT_NORMALIZATION_MAP[p_lower]
+        p_lower = search_term.lower()
+
     confidence_level = "HIGH"
     text_standard_id = None
     standard_number = None
@@ -2133,29 +2154,80 @@ def _get_testing_and_labs_core(conn, cur, standard_id: str):
     # Fetch tests
     routine_tests = []
     type_tests = []
+    notif_rows = []
+    unmapped_notifications = []
     if matched_test_std:
         cur.execute("""
-            SELECT clause, requirement, test_method, equipment_requirement, sample_quantity, frequency, testing_type, remarks, source_page
+            SELECT id, clause, requirement, test_method, equipment_requirement, sample_quantity, frequency, testing_type, remarks, source_page
             FROM standard_tests
             WHERE standard_id = %s
             ORDER BY id ASC;
         """, (matched_test_std,))
         test_rows = cur.fetchall()
+
+        # Connect bis_notifications: query verified test_change records for this specific standard
+        cur.execute("""
+            SELECT id, related_entity_id, title, message, created_at, new_value
+            FROM bis_notifications
+            WHERE notification_type = 'test_change'
+              AND (
+                new_value->>'standard_id' = %s
+                OR related_entity_id IN (
+                    SELECT id::text FROM standard_tests WHERE standard_id = %s
+                )
+              )
+            ORDER BY created_at DESC;
+        """, (matched_test_std, matched_test_std))
+        notif_rows = cur.fetchall()
+
+        test_notif_map = {}
+        for nr in notif_rows:
+            n_id = str(nr[0])
+            rel_id = str(nr[1]) if nr[1] else None
+            n_title = nr[2]
+            n_msg = nr[3]
+            n_created = nr[4].isoformat() if hasattr(nr[4], 'isoformat') else str(nr[4])
+            n_val = nr[5]
+
+            notif_info = {
+                "notification_id": n_id,
+                "title": n_title,
+                "message": n_msg,
+                "created_at": n_created,
+                "badge": "New BIS Requirement",
+                "source": "Official BIS Regulatory Evidence"
+            }
+            if rel_id and rel_id not in test_notif_map:
+                test_notif_map[rel_id] = notif_info
+            if isinstance(n_val, dict):
+                c_key = f"{(n_val.get('clause') or '').strip().lower()}:{(n_val.get('requirement') or '').strip().lower()}"
+                if c_key != ":" and c_key not in test_notif_map:
+                    test_notif_map[c_key] = notif_info
+
         for r in test_rows:
+            t_id_str = str(r[0])
+            t_c_key = f"{(r[1] or '').strip().lower()}:{(r[2] or '').strip().lower()}"
+            matched_notif = test_notif_map.get(t_id_str) or test_notif_map.get(t_c_key)
+            is_updated = bool(matched_notif)
+
             t = {
-                "clause": r[0],
-                "requirement": r[1],
-                "test_method": r[2],
-                "equipment_requirement": r[3] if r[3] != "None" else "Standard laboratory test apparatus",
-                "sample_quantity": r[4],
-                "frequency": r[5],
-                "testing_type": r[6],
-                "remarks": r[7] if r[7] != "None" else None,
-                "source_page": r[8]
+                "id": r[0],
+                "clause": r[1],
+                "requirement": r[2],
+                "test_method": r[3],
+                "equipment_requirement": r[4] if r[4] != "None" else "Standard laboratory test apparatus",
+                "sample_quantity": r[5],
+                "frequency": r[6],
+                "testing_type": r[7],
+                "remarks": r[8] if r[8] != "None" else None,
+                "source_page": r[9],
+                "is_updated": is_updated,
+                "regulatory_update": matched_notif,
+                "regulatory_source": "Official BIS Regulatory Evidence" if is_updated else None
             }
             # Robust Routine vs Type / Periodic / Subcontracted classification
-            t_type = (r[6] or "").strip().lower()
-            freq = (r[5] or "").strip().lower()
+            t_type = (r[7] or "").strip().lower()
+            freq = (r[6] or "").strip().lower()
             
             is_routine = False
             # Routine factory tests: 'routine', 'r', 'routine/periodic', or high-frequency production testing
@@ -2170,6 +2242,28 @@ def _get_testing_and_labs_core(conn, cur, standard_id: str):
                 routine_tests.append(t)
             else:
                 type_tests.append(t)
+
+        # Detect any unmapped notifications for this standard (Requirement 9)
+        for nr in notif_rows:
+            n_id = str(nr[0])
+            rel_id = str(nr[1]) if nr[1] else None
+            n_val = nr[5]
+            c_key = f"{(n_val.get('clause') or '').strip().lower()}:{(n_val.get('requirement') or '').strip().lower()}" if isinstance(n_val, dict) else ""
+            
+            matched_any = False
+            for r in test_rows:
+                t_id_str = str(r[0])
+                t_c_key = f"{(r[1] or '').strip().lower()}:{(r[2] or '').strip().lower()}"
+                if rel_id == t_id_str or (c_key and c_key == t_c_key):
+                    matched_any = True
+                    break
+            if not matched_any:
+                unmapped_notifications.append({
+                    "notification_id": n_id,
+                    "title": nr[2],
+                    "message": nr[3],
+                    "created_at": nr[4].isoformat() if hasattr(nr[4], 'isoformat') else str(nr[4]),
+                })
 
     # Match laboratories & charges using robust normalization
     matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", standard_id)
@@ -2236,7 +2330,11 @@ def _get_testing_and_labs_core(conn, cur, standard_id: str):
         "routine_tests": routine_tests,
         "type_tests": type_tests,
         "laboratories": labs,
-        "grouping_rules": groups
+        "grouping_rules": groups,
+        "regulatory_notifications_count": len(notif_rows),
+        "has_regulatory_updates": any(t.get("is_updated") for t in routine_tests + type_tests),
+        "unmapped_regulatory_warning": "Regulatory update detected. Detailed testing impact could not yet be verified from the available BIS evidence." if unmapped_notifications else None,
+        "unmapped_notifications": unmapped_notifications
     }
 
 @app.get("/api/standards/{standard_id}/documents")
@@ -3223,6 +3321,101 @@ async def recommend_laboratories(
     finally:
         cur.close()
         conn.close()
+
+@app.get("/api/notifications")
+async def get_bis_notifications(
+    limit: int = Query(50, ge=1, le=200),
+    notification_type: Optional[str] = None
+):
+    """
+    Retrieve real BIS regulatory notifications stored in PostgreSQL / Supabase table 'bis_notifications'.
+    Maintained and fed by official BIS monitoring and Supabase Edge Function 'bis-regulatory-monitor'.
+    """
+    conn = get_db()
+    cur = conn.cursor()
+    notifications = []
+    try:
+        if notification_type:
+            cur.execute("""
+                SELECT id, notification_type, title, message, related_entity_type,
+                       related_entity_id, previous_value, new_value, created_at, dedupe_key
+                FROM bis_notifications
+                WHERE notification_type = %s
+                ORDER BY created_at DESC
+                LIMIT %s;
+            """, (notification_type, limit))
+        else:
+            cur.execute("""
+                SELECT id, notification_type, title, message, related_entity_type,
+                       related_entity_id, previous_value, new_value, created_at, dedupe_key
+                FROM bis_notifications
+                ORDER BY created_at DESC
+                LIMIT %s;
+            """, (limit,))
+
+        rows = cur.fetchall()
+        for r in rows:
+            created_at_val = r[8]
+            if hasattr(created_at_val, "isoformat"):
+                created_at_str = created_at_val.isoformat()
+            else:
+                created_at_str = str(created_at_val) if created_at_val else None
+
+            notifications.append({
+                "id": str(r[0]),
+                "notification_type": r[1],
+                "title": r[2],
+                "message": r[3],
+                "related_entity_type": r[4],
+                "related_entity_id": r[5],
+                "previous_value": r[6],
+                "new_value": r[7],
+                "created_at": created_at_str,
+                "dedupe_key": r[9]
+            })
+    except Exception as e:
+        logger.error(f"Error fetching BIS notifications: {e}")
+        raise HTTPException(status_code=500, detail="BIS regulatory updates are temporarily unavailable.")
+    finally:
+        cur.close()
+        conn.close()
+
+    return {
+        "success": True,
+        "total": len(notifications),
+        "notifications": notifications
+    }
+
+@app.post("/api/notifications/sync")
+async def sync_bis_regulatory_monitor():
+    """
+    Trigger the Supabase Edge Function 'bis-regulatory-monitor' server-side
+    to scan BIS official portal for new regulatory notices/QCOs.
+    """
+    import urllib.request
+    import urllib.error
+
+    supabase_url = os.getenv("SUPABASE_URL", "https://ndpfmlkhxjphooyzvdxk.supabase.co")
+    supabase_key = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kcGZtbGtoeGpwaG9veXp2ZHhrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODA2NzA4NiwiZXhwIjoyMTAzNjQzMDg2fQ.XplZIcOAmHS5O5J80bEvyMtb1UF79XyUfpLZ3TEOgDQ")
+
+    edge_fn_url = f"{supabase_url.rstrip('/')}/functions/v1/bis-regulatory-monitor"
+    req = urllib.request.Request(
+        edge_fn_url,
+        data=b"{}",
+        headers={
+            "Authorization": f"Bearer {supabase_key}",
+            "Content-Type": "application/json"
+        },
+        method="POST"
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return {"success": True, "result": data}
+    except Exception as e:
+        logger.warning(f"Edge Function trigger warning: {e}")
+        return {"success": False, "message": str(e)}
 
 if __name__ == "__main__":
     import uvicorn

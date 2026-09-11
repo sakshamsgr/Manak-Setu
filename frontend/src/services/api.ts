@@ -683,3 +683,67 @@ export async function translateChatMessages(params: {
   return data.translations || [];
 }
 
+/**
+ * Real BIS Notification Item from Supabase / bis_notifications table
+ */
+export interface BisNotificationItem {
+  id: string;
+  notification_type: string;
+  title: string;
+  message: string;
+  related_entity_type?: string | null;
+  related_entity_id?: string | null;
+  previous_value?: any;
+  new_value?: any;
+  created_at: string;
+  dedupe_key?: string;
+}
+
+export interface BisNotificationsResponse {
+  success: boolean;
+  total: number;
+  notifications: BisNotificationItem[];
+}
+
+/**
+ * Fetch real BIS regulatory notifications
+ * GET /api/notifications
+ */
+export async function getBisNotifications(
+  params?: { limit?: number; notification_type?: string },
+  signal?: AbortSignal
+): Promise<BisNotificationsResponse> {
+  const queryParams = new URLSearchParams();
+  if (params?.limit) queryParams.set('limit', String(params.limit));
+  if (params?.notification_type) queryParams.set('notification_type', params.notification_type);
+
+  const url = `${getApiBaseUrl()}/api/notifications${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
+  const res = await fetchWithTimeout(url, { signal }, 8000);
+  if (!res.ok) {
+    const msg = await safeExtractErrorMessage(res, 'BIS regulatory updates are temporarily unavailable.');
+    throw new Error(msg);
+  }
+  return res.json();
+}
+
+/**
+ * Trigger backend regulatory scan sync
+ * POST /api/notifications/sync
+ */
+export async function syncBisNotifications(signal?: AbortSignal): Promise<{ success: boolean; result?: any; message?: string }> {
+  const url = `${getApiBaseUrl()}/api/notifications/sync`;
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal,
+    },
+    25000
+  );
+  if (!res.ok) {
+    throw new Error('Failed to synchronize with BIS regulatory monitor');
+  }
+  return res.json();
+}
+

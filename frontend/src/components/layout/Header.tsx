@@ -18,6 +18,7 @@ import {
 import { checkBackendHealth } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
 import { ProfileDropdown } from './ProfileDropdown';
+import { NotificationCenter } from './NotificationCenter';
 
 export type MainNavTab = 
   | 'home' 
@@ -147,6 +148,9 @@ export const Header: React.FC<HeaderProps> = ({
               <span>{t('brand.appInstalled')}</span>
             </div>
           )}
+
+          {/* Real BIS Regulatory Notifications Center */}
+          <NotificationCenter />
 
           {/* PROFILE DROPDOWN (Integrated directly into the flex container) */}
           <ProfileDropdown />

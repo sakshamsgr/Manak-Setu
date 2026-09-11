@@ -15,12 +15,35 @@ import {
   Trash2,
   AlertCircle,
   RefreshCw,
-  X
+  X,
+  WashingMachine,
+  Snowflake,
+  Fan
 } from 'lucide-react';
 import { MainNavTab } from '../layout/Header';
 import { PageInfoButton } from '../common/PageInfoButton';
 import { useLanguage } from '../../context/LanguageContext';
 import { useProductContext } from '../../context/ProductContext';
+
+// Custom Lucide-styled Iron icon
+const IronIcon: React.FC<{ className?: string }> = ({ className = "w-3.5 h-3.5" }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M4 18h16a1 1 0 0 0 1-1c0-4.4-3.6-8-8-8H6a3 3 0 0 0-3 3v5a1 1 0 0 0 1 1z" />
+    <path d="M11 9V5a1 1 0 0 1 1-1h4" />
+    <circle cx="8" cy="14" r="0.5" fill="currentColor" />
+    <circle cx="12" cy="14" r="0.5" fill="currentColor" />
+    <circle cx="16" cy="14" r="0.5" fill="currentColor" />
+  </svg>
+);
 
 interface HomeHeroProps {
   onSubmitQuery: (query: string, file?: File) => void;
@@ -47,34 +70,33 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
 
   const sampleProductPrompts = [
     {
-      icon: <Zap className="w-3.5 h-3.5 text-amber-500" />,
-      label: 'Electric Iron (Dry / Steam)',
+      icon: <IronIcon className="w-3.5 h-3.5 text-amber-500" />,
+      label: 'Electric Iron',
       prompt: 'Electric Iron',
       product: 'Electric Iron',
       cat: 'Electrical & Electronics',
     },
     {
-      icon: <Zap className="w-3.5 h-3.5 text-amber-500" />,
-      label: 'Electric Kettles & Geysers',
-      prompt: 'Electric Kettle',
-      product: 'Electric Kettle',
+      icon: <WashingMachine className="w-3.5 h-3.5 text-blue-600" />,
+      label: 'Electric Washing Machine',
+      prompt: 'Electric Washing Machine',
+      product: 'Electric Washing Machine',
       cat: 'Electrical & Electronics',
     },
     {
-      icon: <Droplets className="w-3.5 h-3.5 text-bis-500" />,
-      label: 'Packaged Drinking Water',
-      prompt: 'Packaged Drinking Water',
-      product: 'Packaged Drinking Water',
-      cat: 'Food & Agriculture',
-    },
-    {
-      icon: <Radio className="w-3.5 h-3.5 text-purple-500" />,
-      label: 'PVC Cables & Wires',
-      prompt: 'PVC Cables & Wires',
-      product: 'PVC Insulated Cables',
+      icon: <Snowflake className="w-3.5 h-3.5 text-sky-500" />,
+      label: 'Split Air Conditioner',
+      prompt: 'Split Air Conditioner',
+      product: 'Split Air Conditioner',
       cat: 'Electrical & Electronics',
     },
-
+    {
+      icon: <Fan className="w-3.5 h-3.5 text-teal-600" />,
+      label: 'Electric Fan',
+      prompt: 'Electric Fan',
+      product: 'Electric Fan',
+      cat: 'Electrical & Electronics',
+    },
   ];
 
   const handleSubmit = (e?: React.FormEvent) => {
@@ -320,20 +342,20 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
             <div className="space-y-3">
               <div className="flex items-center gap-2 text-[11px] font-extrabold text-slate-500 uppercase tracking-wider">
                 <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>{t('hero.samplePrompts') || 'Explore Common Product Queries'}</span>
+                <span>{t('hero.samplePrompts') || 'EXPLORE COMMON PRODUCT QUERIES:'}</span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {sampleProductPrompts.map((item, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => handleQuickPromptClick(item)}
-                    className="flex items-center gap-2 p-2.5 rounded-xl bg-slate-50 hover:bg-bis-50 border border-slate-200 hover:border-bis-300 text-left transition-all group cursor-pointer"
+                    className="flex items-center gap-2.5 p-2.5 rounded-xl bg-slate-50 hover:bg-bis-50 border border-slate-200 hover:border-bis-300 text-left transition-all group cursor-pointer shadow-2xs hover:shadow-xs"
                   >
                     <div className="p-1.5 rounded-lg bg-white group-hover:bg-bis-100 transition-colors shrink-0 shadow-2xs">
                       {item.icon}
                     </div>
-                    <span className="text-xs font-bold text-slate-700 group-hover:text-bis-900 truncate">
+                    <span className="text-xs font-bold text-slate-700 group-hover:text-bis-900 leading-snug">
                       {item.label}
                     </span>
                   </button>

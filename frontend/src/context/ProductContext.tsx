@@ -108,10 +108,14 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setIsLoading(true);
     setErrorMessage(null);
 
+    // If query is a direct product name (e.g. from shortcut card), prioritize it over potentially stale state
+    const isDirectProduct = Boolean(trimmed && !trimmed.toLowerCase().startsWith('compliance requirements for'));
+    const targetProductName = isDirectProduct ? trimmed : (productProfile.name || trimmed);
+
     try {
       const resolved = await resolveProductGuide({
         query: trimmed,
-        productName: productProfile.name || trimmed,
+        productName: targetProductName,
         industryCategory: productProfile.category,
         enterpriseScale: productProfile.industryScale,
         isForeign: productProfile.isForeign,
@@ -193,6 +197,7 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const testingData = testingRes.status === 'fulfilled' ? testingRes.value : null;
       const routineTests: TestItem[] = (testingData?.routine_tests || []).map((t: any) => ({
+        id: t.id,
         name: t.requirement || 'Routine Verification Test',
         type: 'Routine Test' as const,
         description: `${t.requirement}. Method: ${t.test_method || 'BIS standard method'}. Sample: ${t.sample_quantity || 'Production unit'}.`,
@@ -203,9 +208,20 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         sampleQuantity: t.sample_quantity,
         remarks: t.remarks,
         sourcePage: t.source_page,
+        isUpdated: Boolean(t.is_updated),
+        regulatoryUpdate: t.regulatory_update ? {
+          notificationId: t.regulatory_update.notification_id,
+          title: t.regulatory_update.title,
+          message: t.regulatory_update.message,
+          createdAt: t.regulatory_update.created_at,
+          badge: t.regulatory_update.badge,
+          source: t.regulatory_update.source,
+        } : undefined,
+        regulatorySource: t.regulatory_source,
       }));
 
       const typeTests: TestItem[] = (testingData?.type_tests || []).map((t: any) => ({
+        id: t.id,
         name: t.requirement || 'Laboratory Type Test',
         type: (t.testing_type === 'Acceptance' ? 'Acceptance Test' : 'Type Test') as any,
         description: `${t.requirement}. Method: ${t.test_method || 'BIS standard method'}. Sample: ${t.sample_quantity || 'Specified batch'}.`,
@@ -216,6 +232,16 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         sampleQuantity: t.sample_quantity,
         remarks: t.remarks,
         sourcePage: t.source_page,
+        isUpdated: Boolean(t.is_updated),
+        regulatoryUpdate: t.regulatory_update ? {
+          notificationId: t.regulatory_update.notification_id,
+          title: t.regulatory_update.title,
+          message: t.regulatory_update.message,
+          createdAt: t.regulatory_update.created_at,
+          badge: t.regulatory_update.badge,
+          source: t.regulatory_update.source,
+        } : undefined,
+        regulatorySource: t.regulatory_source,
       }));
 
       const requiredTests = [...routineTests, ...typeTests];
@@ -357,6 +383,9 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
             ? `${labs.length} BIS-recognized laboratory facilities available with verified statutory testing charges.`
             : 'BIS Central & Regional testing laboratories network.',
           samplingProtocol: 'Auditors draw 2 production samples during factory audit: 1 for independent testing at recognized lab, 1 counter-sample kept under seal.',
+          regulatoryNoticeCount: testingData?.regulatory_notifications_count || 0,
+          hasRegulatoryUpdates: Boolean(testingData?.has_regulatory_updates),
+          unmappedWarning: testingData?.unmapped_regulatory_warning || null,
         },
         documentChecklist,
         applicationMilestones,

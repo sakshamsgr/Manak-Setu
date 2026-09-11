@@ -543,6 +543,36 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
             </div>
           </div>
 
+          {/* Verified Regulatory Notifications Banner (if standard has test change notices) */}
+          {testingDetails.hasRegulatoryUpdates && (
+            <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-950 flex items-start gap-2.5 shadow-2xs">
+              <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-extrabold text-amber-950 flex items-center gap-2">
+                  <span>Verified BIS Regulatory Test Updates Active</span>
+                  {testingDetails.regulatoryNoticeCount && testingDetails.regulatoryNoticeCount > 0 && (
+                    <span className="px-2 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-200/80 text-amber-900">
+                      {testingDetails.regulatoryNoticeCount} {testingDetails.regulatoryNoticeCount === 1 ? 'Notice' : 'Notices'}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-amber-900 leading-relaxed">
+                  Test requirements for this standard have been verified against official BIS regulatory gazette orders. Look for the <span className="font-bold text-amber-950">New BIS Requirement</span> badges in the test schedule below.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Unmapped Regulatory Notice Warning (Requirement 9) */}
+          {testingDetails.unmappedWarning && (
+            <div className="p-3 rounded-xl bg-sky-50 border border-sky-200 text-xs text-sky-950 flex items-start gap-2 shadow-2xs">
+              <Info className="w-4 h-4 text-sky-700 shrink-0 mt-0.5" />
+              <div className="text-[11px] leading-relaxed">
+                {testingDetails.unmappedWarning}
+              </div>
+            </div>
+          )}
+
           {/* Search Bar for Tests */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
@@ -623,9 +653,31 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
 
                         {/* Test / Requirement Column */}
                         <td className="px-4 py-3.5 align-top">
-                          <div className="font-bold text-slate-900 text-xs sm:text-sm">
-                            {test.name}
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-900 text-xs sm:text-sm">
+                              {test.name}
+                            </span>
+                            {test.isUpdated && (
+                              <span 
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-900 border border-amber-300 shadow-2xs"
+                                title={test.regulatoryUpdate?.message || 'Verified under official BIS regulatory notification'}
+                              >
+                                <Sparkles className="w-3 h-3 text-amber-600" />
+                                <span>{test.regulatoryUpdate?.badge || 'New BIS Requirement'}</span>
+                              </span>
+                            )}
                           </div>
+                          {test.isUpdated && (
+                            <div className="mt-1 text-[10px] font-medium text-amber-900 flex items-center gap-1 flex-wrap">
+                              <span className="font-bold">Source:</span>
+                              <span>{test.regulatorySource || 'Official BIS regulatory evidence'}</span>
+                              {test.regulatoryUpdate?.createdAt && (
+                                <span className="text-slate-400 font-mono">
+                                  • {new Date(test.regulatoryUpdate.createdAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })}
+                                </span>
+                              )}
+                            </div>
+                          )}
                           {test.remarks && test.remarks !== test.name && (
                             <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
                               {test.remarks}
@@ -851,7 +903,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
                       {lab.testingScopes && lab.testingScopes.length > 0 ? (
                         <div className="text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200/70 space-y-1.5">
                           <span className="font-semibold text-slate-700 block">
-                            Testing Scopes & Charges:
+                            Charges:
                           </span>
                           {lab.testingScopes.map((scope: any, scopeIdx: number) => {
                             const scopeLabel = scope.grade_type_size || (scope.remarks ? scope.remarks : null);
