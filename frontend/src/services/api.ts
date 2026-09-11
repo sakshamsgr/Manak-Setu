@@ -409,6 +409,17 @@ export interface ConsumerVerificationResult {
   verification_steps?: string[];
   official_url: string;
   found?: boolean;
+  verified?: boolean;
+  error?: boolean;
+  prototype_label?: string;
+  huid?: string;
+  article_material?: string;
+  purity?: string;
+  jeweller_registration_number?: string;
+  jeweller_name?: string;
+  ahc_centre_name?: string;
+  ahc_recognition_number?: string;
+  ahc_address?: string;
   is_mandatory?: boolean;
   qco?: {
     qco_name: string;

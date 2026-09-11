@@ -194,7 +194,7 @@ export const HallmarkingView: React.FC<HallmarkingViewProps> = ({ onOpenAssistan
   ];
 
   const handleVerifyHuid = async (codeToUse?: string) => {
-    const code = (codeToUse || huidCode).trim();
+    const code = (codeToUse || huidCode).trim().toUpperCase();
     if (!code || huidLoading) return;
 
     if (huidAbortRef.current) {
@@ -615,7 +615,7 @@ export const HallmarkingView: React.FC<HallmarkingViewProps> = ({ onOpenAssistan
                   value={huidCode}
                   onChange={(e) => setHuidCode(e.target.value.toUpperCase())}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleVerifyHuid(); }}
-                  placeholder="Enter 6-digit alphanumeric HUID (e.g. A1B2C3)"
+                  placeholder="Enter 6-digit alphanumeric HUID (e.g. AB12CD)"
                   maxLength={6}
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-amber-200 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-xs sm:text-sm font-mono font-bold tracking-widest uppercase transition-all shadow-xs"
                 />
@@ -646,25 +646,46 @@ export const HallmarkingView: React.FC<HallmarkingViewProps> = ({ onOpenAssistan
               <span className="text-[11px] font-semibold">Test Sample Format:</span>
               <button
                 type="button"
-                onClick={() => { setHuidCode('A1B2C3'); handleVerifyHuid('A1B2C3'); }}
+                onClick={() => { setHuidCode('AB12CD'); handleVerifyHuid('AB12CD'); }}
                 className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 font-mono text-[11px] font-bold border border-amber-200 cursor-pointer"
               >
-                A1B2C3
+                AB12CD
               </button>
             </div>
 
             {/* Result display */}
             {huidResult && (
               <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 space-y-3 animate-slide-up text-xs">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <span className={`px-2.5 py-0.5 rounded text-[11px] font-extrabold uppercase ${
-                    huidResult.valid_format !== false ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                    huidResult.title === 'INVALID HUID FORMAT' ? 'bg-rose-100 text-rose-800' :
+                    huidResult.title === 'HUID NOT FOUND' ? 'bg-amber-100 text-amber-800' :
+                    huidResult.title === 'VERIFICATION ERROR' ? 'bg-rose-100 text-rose-800' :
+                    'bg-emerald-100 text-emerald-800'
                   }`}>
-                    {huidResult.valid_format !== false ? 'Valid Statutory Format' : 'Invalid Format'}
+                    {huidResult.title === 'INVALID HUID FORMAT' ? 'Invalid HUID Format' :
+                     huidResult.title === 'HUID NOT FOUND' ? 'HUID NOT FOUND' :
+                     huidResult.title === 'VERIFICATION ERROR' ? 'Verification Error' :
+                     huidResult.title === 'HUID VERIFIED — DEMO DATA' ? 'HUID VERIFIED — DEMO DATA' :
+                     'Valid Format'}
                   </span>
+                  {huidResult.title === 'HUID VERIFIED — DEMO DATA' && huidResult.prototype_label && (
+                    <span className="px-2 py-0.5 rounded bg-slate-200 text-slate-700 text-[10px] font-extrabold uppercase tracking-wide">
+                      {huidResult.prototype_label}
+                    </span>
+                  )}
                   <span className="font-mono font-bold text-amber-950">{huidResult.title}</span>
                 </div>
                 <p className="text-amber-900 leading-relaxed">{huidResult.description}</p>
+                {huidResult.query_type === 'huid' && huidResult.huid && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div className="p-2.5 rounded-xl bg-white border border-amber-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">HUID</div><div className="font-mono font-bold text-slate-900">{huidResult.huid}</div></div>
+                    <div className="p-2.5 rounded-xl bg-white border border-amber-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">Material</div><div className="font-bold text-slate-900">{huidResult.article_material || '—'}</div></div>
+                    <div className="p-2.5 rounded-xl bg-white border border-amber-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">Purity</div><div className="font-bold text-slate-900">{huidResult.purity || '—'}</div></div>
+                    <div className="p-2.5 rounded-xl bg-white border border-amber-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">Jeweller</div><div className="font-bold text-slate-900">{huidResult.jeweller_name || '—'}</div></div>
+                    <div className="p-2.5 rounded-xl bg-white border border-amber-200 sm:col-span-2"><div className="text-[10px] uppercase tracking-wide text-slate-500">AHC Centre</div><div className="font-bold text-slate-900">{huidResult.ahc_centre_name || '—'}</div></div>
+                  </div>
+                )}
                 {huidResult.verification_steps && (
                   <ol className="list-decimal pl-5 space-y-1 text-amber-950 text-[11px]">
                     {huidResult.verification_steps.map((s, idx) => (
@@ -676,7 +697,7 @@ export const HallmarkingView: React.FC<HallmarkingViewProps> = ({ onOpenAssistan
                 <div className="p-3 rounded-xl bg-white border border-amber-200 text-slate-600 text-[11px] flex items-start gap-2">
                   <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                   <span>
-                    <strong>Statutory Note:</strong> Manak Setu validates syntax and regulatory compliance format. To view the exact jeweller name, AHC centre, and timestamp registration in the central government database, check this code on the official <strong>BIS Care Mobile App</strong>.
+                    <strong>Statutory Note:</strong> Manak Setu validates syntax and demo-record lookup only. To verify the exact jeweller name, AHC centre, and official record, use the official <strong>BIS Care Mobile App</strong> or BIS portal.
                   </span>
                 </div>
               </div>

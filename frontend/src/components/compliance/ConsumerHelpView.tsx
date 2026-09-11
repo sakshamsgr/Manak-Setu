@@ -91,7 +91,7 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
   ];
 
   const handleVerify = async (customCode?: string) => {
-    const codeToVerify = (customCode || verifyCode).trim();
+    const codeToVerify = (customCode || verifyCode).trim().toUpperCase();
     if (!codeToVerify || verifyLoading) return;
 
     if (verifyAbortRef.current) {
@@ -328,13 +328,13 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
                 <input
                   type="text"
                   value={verifyCode}
-                  onChange={(e) => setVerifyCode(e.target.value)}
+                  onChange={(e) => setVerifyCode(e.target.value.toUpperCase())}
                   onKeyDown={(e) => { if (e.key === 'Enter') handleVerify(); }}
                   placeholder={
                     verifyType === 'cml'
                       ? 'Enter 7 or 8-digit CM/L number (e.g. 1234567 or CM/L-9876543)'
                       : verifyType === 'huid'
-                      ? 'Enter 6-character alphanumeric HUID code (e.g. A1B2C3)'
+                      ? 'Enter 6-character alphanumeric HUID code (e.g. AB12CD)'
                       : 'Enter Indian Standard number (e.g. IS 368 or 302)'
                   }
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 focus:ring-2 focus:ring-bis-500 focus:border-bis-500 text-xs sm:text-sm font-semibold transition-all shadow-xs"
@@ -373,10 +373,10 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
               </button>
               <button
                 type="button"
-                onClick={() => { setVerifyType('huid'); setVerifyCode('A1B2C3'); handleVerify('A1B2C3'); }}
+                onClick={() => { setVerifyType('huid'); setVerifyCode('AB12CD'); handleVerify('AB12CD'); }}
                 className="px-2.5 py-1 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 font-mono text-[11px]"
               >
-                HUID: A1B2C3
+                HUID: AB12CD
               </button>
               <button
                 type="button"
@@ -392,10 +392,30 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
               <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4 animate-slide-up">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
                   <div className="flex items-center gap-2">
-                    {verifyResult.valid_format !== false ? (
+                    {verifyResult.title === 'INVALID HUID FORMAT' ? (
+                      <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                        Invalid HUID Format
+                      </span>
+                    ) : verifyResult.title === 'HUID VERIFIED — DEMO DATA' ? (
                       <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        Valid Format Verified
+                        HUID VERIFIED — DEMO DATA
+                      </span>
+                    ) : verifyResult.title === 'HUID NOT FOUND' ? (
+                      <span className="px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                        HUID NOT FOUND
+                      </span>
+                    ) : verifyResult.error ? (
+                      <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                        Verification Error
+                      </span>
+                    ) : verifyResult.valid_format !== false ? (
+                      <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        Valid Format
                       </span>
                     ) : (
                       <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
@@ -409,6 +429,11 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
                         Mandatory Under QCO
                       </span>
                     )}
+                    {verifyResult.title === 'HUID VERIFIED — DEMO DATA' && verifyResult.prototype_label && (
+                      <span className="px-2.5 py-0.5 rounded-md bg-slate-200 text-slate-700 text-[10px] font-extrabold uppercase tracking-wide">
+                        {verifyResult.prototype_label}
+                      </span>
+                    )}
                   </div>
 
                   <a
@@ -417,7 +442,7 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
                     rel="noopener noreferrer"
                     className="text-xs font-bold text-bis-700 hover:text-bis-900 flex items-center gap-1"
                   >
-                    <span>Validate on Official BIS Portal</span>
+                    <span>Validate on Official BIS Portal (manual)</span>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
@@ -426,6 +451,19 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
                   <h3 className="text-sm font-extrabold text-slate-900">{verifyResult.title}</h3>
                   <p className="text-xs text-slate-600 mt-1 leading-relaxed">{verifyResult.description}</p>
                 </div>
+
+                {verifyResult.query_type === 'huid' && verifyResult.huid && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <div className="p-3 bg-white rounded-xl border border-slate-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">HUID</div><div className="text-xs font-bold text-slate-900">{verifyResult.huid}</div></div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">Material</div><div className="text-xs font-bold text-slate-900">{verifyResult.article_material || '—'}</div></div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">Purity</div><div className="text-xs font-bold text-slate-900">{verifyResult.purity || '—'}</div></div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">Jeweller Reg. No.</div><div className="text-xs font-bold text-slate-900">{verifyResult.jeweller_registration_number || '—'}</div></div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200 sm:col-span-2"><div className="text-[10px] uppercase tracking-wide text-slate-500">Jeweller</div><div className="text-xs font-bold text-slate-900">{verifyResult.jeweller_name || '—'}</div></div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200 sm:col-span-2"><div className="text-[10px] uppercase tracking-wide text-slate-500">AHC Centre</div><div className="text-xs font-bold text-slate-900">{verifyResult.ahc_centre_name || '—'}</div></div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">AHC Recognition No.</div><div className="text-xs font-bold text-slate-900">{verifyResult.ahc_recognition_number || '—'}</div></div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200"><div className="text-[10px] uppercase tracking-wide text-slate-500">AHC Address</div><div className="text-xs font-bold text-slate-900">{verifyResult.ahc_address || '—'}</div></div>
+                  </div>
+                )}
 
                 {/* Mandatory marks breakdown if HUID */}
                 {verifyResult.mandatory_marks && (
@@ -451,7 +489,7 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
                 {/* Step-by-step verification instructions */}
                 {verifyResult.verification_steps && (
                   <div className="space-y-1.5 pt-1">
-                    <div className="text-xs font-bold text-slate-800">Verification Steps on Official BIS Care App:</div>
+                    <div className="text-xs font-bold text-slate-800">How to Verify Your HUID with BIS</div>
                     <ol className="list-decimal pl-5 text-xs text-slate-600 space-y-1">
                       {verifyResult.verification_steps.map((step, idx) => (
                         <li key={idx}>{step}</li>

@@ -2718,37 +2718,167 @@ async def verify_consumer_mark(
         }
 
     elif query_type == "huid":
-        alphanumeric = "".join(ch for ch in code_clean if ch.isalnum())
-        is_valid_format = len(alphanumeric) == 6
-        
-        if is_valid_format:
-            msg_en = f"HUID code {alphanumeric} matches the statutory 6-character alphanumeric Hallmark Unique Identification format under the BIS Act 2016."
-            msg_hi = f"HUID कोड {alphanumeric} बीआईएस अधिनियम 2016 के तहत वैधानिक 6-अंकीय अल्फान्यूमेरिक हॉलमार्क विशिष्ट पहचान प्रारूप से मेल खाता है।"
-            msg_bn = f"HUID কোড {alphanumeric} বিআইএস আইন ২০১৬ এর অধীনে সংবিধিবদ্ধ ৬-অক্ষরের আলফানিউমেরিক হলমার্ক ইউনিক আইডেন্টিফিকেশন ফরম্যাটের সাথে মেলে।"
-        else:
-            msg_en = "Invalid HUID format. Authentic BIS gold hallmarking uses a 6-character laser-engraved alphanumeric code (e.g. A1B2C3)."
-            msg_hi = "अमान्य HUID प्रारूप। असली बीआईएस स्वर्ण हॉलमार्किंग 6-अंकीय लेजर-उत्कीर्ण अल्फान्यूमेरिक कोड का उपयोग करती है।"
-            msg_bn = "অবৈধ HUID ফরম্যাট। আসল বিআইএস সোনার হলমার্কিং একটি ৬-অক্ষরের লেজার-খোদাই করা আলফানিউমেরিক কোড ব্যবহার করে।"
+        normalized = code_clean.strip().upper()
+        is_valid_format = bool(re.fullmatch(r"[A-Z0-9]{6}", normalized))
 
-        msg = msg_hi if language == "hi" else (msg_bn if language == "bn" else msg_en)
+        if not is_valid_format:
+            msg_en = "Invalid HUID format. The HUID must contain exactly 6 letters or numbers (for example, AB12CD)."
+            msg_hi = "अमान्य HUID प्रारूप। HUID में बिल्कुल 6 अक्षर या अंक होने चाहिए (उदाहरण: AB12CD)।"
+            msg_bn = "অবৈধ HUID ফরম্যাট। HUID-এ ঠিক ৬টি অক্ষর বা সংখ্যা থাকতে হবে (উদাহরণ: AB12CD)।"
+            msg = msg_hi if language == "hi" else (msg_bn if language == "bn" else msg_en)
+            return {
+                "query_type": "huid",
+                "input": code,
+                "normalized_code": normalized,
+                "valid_format": False,
+                "found": False,
+                "title": "INVALID HUID FORMAT",
+                "description": msg,
+                "mandatory_marks": [
+                    {"mark": "BIS Standard Logo", "desc": "Official triangle insignia"},
+                    {"mark": "Purity Grade", "desc": "Fineness e.g. 22K916 (91.6% Pure Gold) or 18K750"},
+                    {"mark": "6-Digit HUID", "desc": "Laser engraved code: XXXXXX"}
+                ],
+                "verification_steps": [
+                    "Open the official BIS CARE app or the BIS portal.",
+                    "Use the HUID verification tool for a manual check.",
+                    "The HUID must be exactly 6 characters long and use only letters A-Z or numbers 0-9."
+                ],
+                "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+            }
+
+        conn = None
+        row = None
+        error = None
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            cur.execute(
+                """
+                SELECT huid, verified, status, article_material, purity,
+                       jeweller_registration_number, jeweller_name,
+                       ahc_centre_name, ahc_recognition_number, ahc_address,
+                       source, is_demo_data
+                FROM public.huid_verification_records
+                WHERE huid = %s
+                LIMIT 1;
+                """,
+                (normalized,)
+            )
+            row = cur.fetchone()
+            cur.close()
+        except Exception as exc:
+            logger.exception("HUID verification lookup failed for %s", normalized)
+            error = str(exc)
+        finally:
+            if conn is not None:
+                conn.close()
+
+        if error:
+            error_message = (
+                "Verification service error: unable to complete the HUID lookup. "
+                "Please try again or validate manually on the official BIS portal."
+            )
+            return {
+                "query_type": "huid",
+                "input": code,
+                "normalized_code": normalized,
+                "valid_format": True,
+                "found": False,
+                "verified": False,
+                "error": True,
+                "title": "VERIFICATION ERROR",
+                "description": error_message,
+                "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+            }
+
+        if row is None:
+            not_found_msg_en = "This HUID could not be found in our verification records. A valid 6-character format does not by itself confirm authenticity."
+            not_found_msg_hi = "यह HUID हमारे सत्यापन रिकॉर्ड में नहीं मिला। वैध 6-अक्षर प्रारूप स्वयं प्रमाणितता नहीं देता है।"
+            not_found_msg_bn = "এই HUID আমাদের যাচাইকরণ রেকর্ডে পাওয়া যায়নি। একটি বৈধ ৬-অক্ষরের ফরম্যাট নিজেই সত্যতা নিশ্চিত করে না।"
+            not_found_msg = not_found_msg_hi if language == "hi" else (not_found_msg_bn if language == "bn" else not_found_msg_en)
+            return {
+                "query_type": "huid",
+                "input": code,
+                "normalized_code": normalized,
+                "valid_format": True,
+                "found": False,
+                "verified": False,
+                "title": "HUID NOT FOUND",
+                "description": not_found_msg,
+                "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care",
+                "verification_steps": [
+                    "Verify the HUID on the official BIS CARE app.",
+                    "Check with the jeweller or AHC if the article is properly hallmarked.",
+                    "A valid 6-character format does not by itself confirm authenticity."
+                ]
+            }
+
+        record = {
+            "huid": row[0],
+            "verified": bool(row[1]),
+            "status": row[2],
+            "article_material": row[3],
+            "purity": row[4],
+            "jeweller_registration_number": row[5],
+            "jeweller_name": row[6],
+            "ahc_centre_name": row[7],
+            "ahc_recognition_number": row[8],
+            "ahc_address": row[9],
+            "source": row[10],
+            "is_demo_data": bool(row[11]),
+        }
+
+        if not record["verified"]:
+            return {
+                "query_type": "huid",
+                "input": code,
+                "normalized_code": normalized,
+                "valid_format": True,
+                "found": True,
+                "verified": False,
+                "title": "HUID NOT FOUND",
+                "description": "This HUID could not be found in our verification records. A valid 6-character format does not by itself confirm authenticity.",
+                "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+            }
+
+        demo_msg_en = "This HUID matches a prototype demo record in our verification dataset. These records are synthetic and are not live BIS verification data."
+        demo_msg_hi = "यह HUID हमारे प्रोटोटाइप डेमो रिकॉर्ड से मेल खाता है। ये रिकॉर्ड सिंथेटिक हैं और वास्तविक BIS Verification डेटा नहीं हैं।"
+        demo_msg_bn = "এই HUID আমাদের প্রোটোটাইপ ডেমো রেকর্ডের সাথে ম্যাচ করে। এই রেকর্ডগুলি সিন্থেটিক এবং লাইভ BIS যাচাই ডেটা নয়।"
+        demo_msg = demo_msg_hi if language == "hi" else (demo_msg_bn if language == "bn" else demo_msg_en)
+
         return {
             "query_type": "huid",
             "input": code,
-            "normalized_code": alphanumeric,
-            "valid_format": is_valid_format,
-            "title": f"HUID: {alphanumeric}" if is_valid_format else "Invalid HUID Format",
-            "description": msg,
+            "normalized_code": normalized,
+            "valid_format": True,
+            "found": True,
+            "verified": True,
+            "status": record["status"],
+            "title": "HUID VERIFIED — DEMO DATA",
+            "description": demo_msg,
+            "huid": record["huid"],
+            "article_material": record["article_material"],
+            "purity": record["purity"],
+            "jeweller_registration_number": record["jeweller_registration_number"],
+            "jeweller_name": record["jeweller_name"],
+            "ahc_centre_name": record["ahc_centre_name"],
+            "ahc_recognition_number": record["ahc_recognition_number"],
+            "ahc_address": record["ahc_address"],
+            "source": record["source"],
+            "is_demo_data": record["is_demo_data"],
+            "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care",
+            "prototype_label": "Prototype / Demo Data",
+            "verification_steps": [
+                "Open the official BIS CARE app or BIS portal for manual validation.",
+                "Check the HUID against the jeweller and AHC details recorded in the official database.",
+                "This prototype data is for demonstration only and is not live BIS verification."
+            ],
             "mandatory_marks": [
                 {"mark": "BIS Standard Logo", "desc": "Official triangle insignia"},
-                {"mark": "Purity Grade", "desc": "Fineness e.g. 22K916 (91.6% Pure Gold) or 18K750"},
-                {"mark": "6-Digit HUID", "desc": f"Laser engraved code: {alphanumeric if is_valid_format else 'XXXXXX'}"}
-            ],
-            "verification_steps": [
-                "Open the BIS Care App on Android or iOS.",
-                "Tap on 'Verify HUID' feature.",
-                f"Enter the 6-character code {alphanumeric if is_valid_format else 'XXXXXX'} to view jeweller registration number, AHC assaying centre, and date of hallmarking."
-            ],
-            "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+                {"mark": "Purity Grade", "desc": record["purity"] or "Fineness grade"},
+                {"mark": "6-Digit HUID", "desc": record["huid"]}
+            ]
         }
 
     else:
