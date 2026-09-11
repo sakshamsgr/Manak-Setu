@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   FlaskConical, 
   ArrowRight, 
@@ -21,16 +21,20 @@ import {
   Globe,
   ChevronDown,
   ChevronUp,
-  Sparkles
+  Sparkles,
+  Filter,
+  CheckCircle2,
+  FileText
 } from 'lucide-react';
-import { TestingDetails, LabItem } from '../../types/compliance';
+import { TestingDetails, LabItem, StandardDetails, TestItem, GroupingRuleItem } from '../../types/compliance';
 import { PageInfoButton } from '../common/PageInfoButton';
 import { useLanguage } from '../../context/LanguageContext';
 import { useProductContext } from '../../context/ProductContext';
-import { getRecommendedLaboratories, RecommendedLab } from '../../services/api';
+import { getRecommendedLaboratories } from '../../services/api';
 
 interface Step4TestingProps {
   productName: string;
+  standardDetails?: StandardDetails;
   testingDetails: TestingDetails;
   onNext: () => void;
   onPrev: () => void;
@@ -39,16 +43,31 @@ interface Step4TestingProps {
 
 export const Step4Testing: React.FC<Step4TestingProps> = ({
   productName,
+  standardDetails,
   testingDetails,
   onNext,
   onPrev,
   onAskAI,
 }) => {
   const { t } = useLanguage();
-  const { guideData } = useProductContext();
-  const [activeTab, setActiveTab] = useState<'routine' | 'type' | 'labs' | 'grouping'>('routine');
+  const { guideData, productProfile } = useProductContext();
 
-  // Track which laboratory's contact info is currently expanded
+  // Dynamic Product & Standard from props and context
+  const effectiveProduct = productName || productProfile?.name || guideData?.productProfile?.name || 'Selected Product';
+  const effectiveStandard = standardDetails || guideData?.standardDetails;
+  const standardCode = effectiveStandard?.code && effectiveStandard.code !== 'Data Not Available' 
+    ? effectiveStandard.code 
+    : '';
+  const standardTitle = effectiveStandard?.title || '';
+
+  // Tab navigation: tests (default main focus), labs, grouping
+  const [activeTab, setActiveTab] = useState<'tests' | 'labs' | 'grouping'>('tests');
+
+  // Test table filtering and search
+  const [testFilter, setTestFilter] = useState<'all' | 'routine' | 'type'>('all');
+  const [testSearch, setTestSearch] = useState<string>('');
+
+  // Track which laboratory contact info is currently expanded
   const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
 
   // Location & Lab recommendation states
@@ -74,14 +93,62 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
     return sessionStorage.getItem('bis_user_location') || '';
   });
 
-  const routineTests = testingDetails.routineTests || testingDetails.requiredTests?.filter(t => t.type === 'Routine Test') || [];
-  const typeTests = testingDetails.typeTests || testingDetails.requiredTests?.filter(t => t.type !== 'Routine Test') || [];
-  const baseLabs = testingDetails.laboratories || [];
-  const groupingRules = testingDetails.groupingRules || [];
+  // Extract routine and type tests
+  const routineTests: TestItem[] = useMemo(() => {
+    return testingDetails.routineTests || testingDetails.requiredTests?.filter(t => t.type === 'Routine Test') || [];
+  }, [testingDetails]);
 
-  const standardCode = guideData?.standardDetails?.code || '';
+  const typeTests: TestItem[] = useMemo(() => {
+    return testingDetails.typeTests || testingDetails.requiredTests?.filter(t => t.type !== 'Routine Test') || [];
+  }, [testingDetails]);
 
-  // Fetch recommended laboratories from existing backend database
+  // Unified tests array belonging strictly to the selected standard
+  const allTests: TestItem[] = useMemo(() => {
+    if (testingDetails.requiredTests && testingDetails.requiredTests.length > 0) {
+      return testingDetails.requiredTests;
+    }
+    return [...routineTests, ...typeTests];
+  }, [testingDetails, routineTests, typeTests]);
+
+  // Filtered tests based on active filter button and search query
+  const filteredTests = useMemo(() => {
+    let result = allTests;
+    if (testFilter === 'routine') {
+      result = result.filter(t => t.type === 'Routine Test');
+    } else if (testFilter === 'type') {
+      result = result.filter(t => t.type !== 'Routine Test');
+    }
+
+    if (testSearch.trim()) {
+      const q = testSearch.toLowerCase().trim();
+      result = result.filter(t => 
+        (t.name && t.name.toLowerCase().includes(q)) ||
+        (t.clause && t.clause.toLowerCase().includes(q)) ||
+        (t.testMethod && t.testMethod.toLowerCase().includes(q)) ||
+        (t.frequency && t.frequency.toLowerCase().includes(q)) ||
+        (t.sampleQuantity && t.sampleQuantity.toLowerCase().includes(q))
+      );
+    }
+    return result;
+  }, [allTests, testFilter, testSearch]);
+
+  const rawGrouping = testingDetails.groupingRules || [];
+
+  // Normalize grouping rules to handle both snake_case and camelCase
+  const groupingRules = useMemo(() => {
+    return rawGrouping.map((gr: any) => ({
+      groupCode: gr.groupCode || gr.group_code || 'RULE',
+      groupName: gr.groupName || gr.group_name || 'Grouping Rule',
+      condition: gr.condition || '',
+      sampleRequirement: (gr.sampleRequirement || gr.sample_requirement || '').trim(),
+      preferredSample: (gr.preferredSample || gr.preferred_sample || '').trim(),
+      voltageRequirement: (gr.voltageRequirement || gr.voltage_requirement || '').trim(),
+      remarks: (gr.remarks || '').trim(),
+      sourcePage: gr.sourcePage || gr.source_page || null,
+    }));
+  }, [rawGrouping]);
+
+  // Fetch recommended laboratories using EXISTING GET /api/labs/recommend
   const fetchRecommendations = useCallback(async (loc?: string, lat?: number, lng?: number) => {
     setIsLoadingLabs(true);
     setLabsError(null);
@@ -90,7 +157,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
         location: loc,
         lat,
         lng,
-        standard_id: standardCode || '368',
+        standard_id: standardCode || undefined,
       });
       if (res && res.laboratories) {
         setRecommendedLabs(res.laboratories);
@@ -174,41 +241,30 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
     }
   };
 
-  // Convert recommendedLabs or fallback to baseLabs and map new contact fields safely
-  const displayedLabs = (recommendedLabs && recommendedLabs.length > 0)
-    ? recommendedLabs.map(rl => ({
-        id: rl.id,
-        labName: rl.lab_name,
-        oslCode: rl.osl_code,
-        address: rl.address,
-        city: rl.city,
-        state: rl.state,
-        status: rl.status || 'Recognized (Valid)',
-        testingCharge: rl.testing_charge,
-        testingScopes: rl.testing_scopes,
-        currency: rl.currency || 'INR',
-        sourceUrl: rl.source_url,
-        remarks: rl.remarks,
-        proximityTier: rl.proximity_tier || 'National BIS Network',
-        pincode: rl.pincode,
-        email: rl.contact_email,
-        phone: rl.contact_phone,
-        website: rl.website,
-        lat: rl.latitude,
-        lng: rl.longitude,
-      }))
-    : baseLabs.map((l: any) => ({
-        ...l,
-        status: 'Recognized (Valid)',
-        testingScopes: undefined,
-        proximityTier: 'National BIS Network',
-        pincode: l.pincode,
-        email: l.contact_email,
-        phone: l.contact_phone,
-        website: l.website,
-        lat: l.latitude,
-        lng: l.longitude,
-      }));
+  // Strictly display laboratories returned from backend API (no hardcoded/fallback fake records)
+  const displayedLabs = useMemo(() => {
+    if (!recommendedLabs) return [];
+    return recommendedLabs.map((rl: any) => ({
+      id: rl.id,
+      labName: rl.lab_name,
+      oslCode: rl.osl_code || null,
+      address: rl.address || null,
+      city: rl.city || null,
+      state: rl.state || null,
+      status: rl.status || null,
+      testingCharge: rl.testing_charge != null ? rl.testing_charge : null,
+      testingScopes: Array.isArray(rl.testing_scopes) ? rl.testing_scopes : [],
+      currency: rl.currency || null,
+      sourceUrl: rl.source_url || null,
+      remarks: rl.remarks || null,
+      proximityTier: rl.proximity_tier || null,
+      email: rl.contact_email || null,
+      phone: rl.contact_phone || null,
+      website: rl.website || null,
+      lat: rl.latitude != null ? rl.latitude : null,
+      lng: rl.longitude != null ? rl.longitude : null,
+    }));
+  }, [recommendedLabs]);
 
   const getProximityBadgeStyle = (tier: string) => {
     const tLower = tier.toLowerCase();
@@ -218,7 +274,6 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
     return 'bg-slate-100 text-slate-700 border-slate-200 font-semibold';
   };
 
-  // Helper to generate precise Google Maps URL
   const getMapsUrl = (lab: any) => {
     if (lab.lat && lab.lng) {
       return `https://www.google.com/maps/search/?api=1&query=${lab.lat},${lab.lng}`;
@@ -229,7 +284,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
 
   return (
     <div className="space-y-6 animate-fade-in relative">
-      {/* Location Prompt Modal */}
+      {/* Location Modal */}
       {showLocationModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-5 relative">
@@ -252,50 +307,49 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
                 <h3 className="text-base sm:text-lg font-extrabold text-slate-900 mt-1">
                   Find Nearest BIS Testing Laboratories
                 </h3>
+                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                  Enter your manufacturing city or allow GPS detection to find BIS-recognized laboratories near your facility.
+                </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 leading-relaxed space-y-1">
-              <p className="font-bold text-slate-800">Why is location requested?</p>
-              <p>During Stage 4, sample lots must be sent to accredited laboratories. Providing your facility or district location allows Manak Setu to rank authorized laboratories by regional proximity from the official BIS directory.</p>
-            </div>
-
             {geoError && (
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <span>{geoError}</span>
               </div>
             )}
 
-            <div className="space-y-3">
+            <div className="space-y-3 pt-1">
               <button
                 type="button"
                 onClick={handleUseDeviceLocation}
                 disabled={isLocating}
-                className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all"
+                className="w-full py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-indigo-600/20 disabled:opacity-50 cursor-pointer"
               >
                 {isLocating ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Detecting Device Location...</span>
+                    <span>Detecting GPS Coordinates...</span>
                   </>
                 ) : (
                   <>
                     <Navigation className="w-4 h-4" />
-                    <span>Use Current Device Location</span>
+                    <span>Use My Current Device Location</span>
                   </>
                 )}
               </button>
 
-              <div className="relative flex py-1 items-center">
-                <div className="grow border-t border-slate-200"></div>
-                <span className="shrink mx-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider">or enter manually</span>
-                <div className="grow border-t border-slate-200"></div>
+              <div className="relative flex items-center justify-center">
+                <div className="border-t border-slate-200 w-full" />
+                <span className="bg-white px-3 text-[11px] font-bold uppercase text-slate-400 absolute">
+                  Or enter manually
+                </span>
               </div>
 
-              <form onSubmit={handleManualLocationSubmit} className="flex gap-2">
+              <form onSubmit={handleManualLocationSubmit} className="flex gap-2 pt-1">
                 <div className="relative flex-1">
-                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
                   <input
                     type="text"
                     value={inputLocation}
@@ -307,7 +361,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
                 <button
                   type="submit"
                   disabled={!inputLocation.trim()}
-                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs sm:text-sm shrink-0 transition-colors"
+                  className="px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white font-bold text-xs sm:text-sm shrink-0 transition-colors cursor-pointer"
                 >
                   Search
                 </button>
@@ -318,7 +372,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
               <button
                 type="button"
                 onClick={handleSkipLocation}
-                className="text-slate-500 hover:text-slate-800 font-semibold hover:underline"
+                className="text-slate-500 hover:text-slate-800 font-semibold hover:underline cursor-pointer"
               >
                 Skip for now (View all labs)
               </button>
@@ -330,17 +384,17 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
         </div>
       )}
 
-      {/* Header */}
+      {/* Header Section */}
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase bg-bis-100 text-bis-900 rounded">
             Stage 4 of 6
           </span>
           <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-            {t('s4Title')}
+            Step 4: Testing & Laboratories
           </h2>
           <p className="text-xs sm:text-sm text-slate-500">
-            {t('s4Subtitle')}
+            Find the tests required for your product and suitable BIS-recognized laboratories.
           </p>
         </div>
         <PageInfoButton
@@ -351,45 +405,56 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
         />
       </div>
 
-      {/* Tabs Navigation */}
+      {/* Dynamic Product & Applicable Standard Metadata Banner */}
+      <div className="p-3.5 sm:p-4 rounded-2xl bg-white border border-slate-200 shadow-2xs">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+              Product:
+            </span>
+            <span className="px-3 py-1 rounded-lg bg-slate-100 text-slate-900 font-bold border border-slate-200">
+              {effectiveProduct}
+            </span>
+          </div>
+          <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500">
+              Applicable Standard:
+            </span>
+            <span className="px-3 py-1 rounded-lg bg-bis-900 text-white font-mono font-bold shadow-2xs">
+              {standardCode || 'Standard Identified'}
+            </span>
+            {standardTitle && (
+              <span className="text-xs text-slate-600 font-medium hidden md:inline truncate max-w-lg" title={standardTitle}>
+                — {standardTitle}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
       <div className="flex flex-wrap gap-2 p-1.5 bg-slate-100 rounded-2xl border border-slate-200">
         <button
-          onClick={() => setActiveTab('routine')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'routine'
+          onClick={() => setActiveTab('tests')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            activeTab === 'tests'
               ? 'bg-white text-bis-950 shadow-xs border border-slate-200'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
           <FlaskConical className="w-3.5 h-3.5 text-emerald-600" />
-          <span>Routine Tests</span>
-          {routineTests.length > 0 && (
+          <span>Required Tests</span>
+          {allTests.length > 0 && (
             <span className="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold font-mono">
-              {routineTests.length}
-            </span>
-          )}
-        </button>
-
-        <button
-          onClick={() => setActiveTab('type')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
-            activeTab === 'type'
-              ? 'bg-white text-bis-950 shadow-xs border border-slate-200'
-              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
-          }`}
-        >
-          <Layers className="w-3.5 h-3.5 text-bis-700" />
-          <span>Type & Acceptance Tests</span>
-          {typeTests.length > 0 && (
-            <span className="px-1.5 py-0.2 rounded-full bg-bis-100 text-bis-800 text-[10px] font-bold font-mono">
-              {typeTests.length}
+              {allTests.length}
             </span>
           )}
         </button>
 
         <button
           onClick={() => setActiveTab('labs')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             activeTab === 'labs'
               ? 'bg-white text-bis-950 shadow-xs border border-slate-200'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
@@ -406,7 +471,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
 
         <button
           onClick={() => setActiveTab('grouping')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
             activeTab === 'grouping'
               ? 'bg-white text-bis-950 shadow-xs border border-slate-200'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
@@ -422,145 +487,225 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
         </button>
       </div>
 
-      {/* Tab Content 1: Routine Tests */}
-      {activeTab === 'routine' && (
-        <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-900">
-              <FlaskConical className="w-4 h-4 text-emerald-600" />
-              <span>Routine Factory Production Tests (Scheme-I Mandatory)</span>
+      {/* ============================================================ */}
+      {/* TAB 1: REQUIRED TESTS (Clean Table as Main Focus)             */}
+      {/* ============================================================ */}
+      {activeTab === 'tests' && (
+        <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-5">
+          {/* Header & Subtitle */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-900">
+                <FlaskConical className="w-4 h-4 text-emerald-600" />
+                <span>Mandatory Scheme-I & Laboratory Test Parameters</span>
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Clause-wise technical tests, methods, and verification frequencies under <strong>{standardCode || 'selected standard'}</strong>.
+              </p>
             </div>
-            <span className="text-[11px] text-slate-500 font-semibold">100% In-house Factory Verification</span>
+
+            {/* Filter Pills */}
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl shrink-0">
+              <button
+                type="button"
+                onClick={() => setTestFilter('all')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  testFilter === 'all'
+                    ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                All ({allTests.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTestFilter('routine')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  testFilter === 'routine'
+                    ? 'bg-emerald-600 text-white shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-emerald-700'
+                }`}
+              >
+                Routine ({routineTests.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setTestFilter('type')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  testFilter === 'type'
+                    ? 'bg-indigo-600 text-white shadow-2xs font-extrabold'
+                    : 'text-slate-600 hover:text-indigo-700'
+                }`}
+              >
+                Type & Acceptance ({typeTests.length})
+              </button>
+            </div>
           </div>
 
-          {routineTests.length > 0 ? (
-            <div className="space-y-3">
-              {routineTests.map((test, idx) => (
-                <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 hover:border-emerald-300 transition-colors">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-extrabold flex items-center justify-center">
-                        {idx + 1}
-                      </span>
-                      <span>{test.name}</span>
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      {test.clause && (
-                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase bg-slate-200 text-slate-800 rounded">
-                          Clause {test.clause}
-                        </span>
-                      )}
-                      <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded bg-emerald-100 text-emerald-900">
-                        Routine Test
-                      </span>
-                    </div>
-                  </div>
+          {/* Search Bar for Tests */}
+          <div className="relative">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+            <input
+              type="text"
+              value={testSearch}
+              onChange={(e) => setTestSearch(e.target.value)}
+              placeholder="Search tests by clause, requirement name, or testing method..."
+              className="w-full pl-9 pr-8 py-2 rounded-xl border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-bis-500 focus:border-bis-500"
+            />
+            {testSearch && (
+              <button
+                onClick={() => setTestSearch('')}
+                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
 
-                  <p className="text-xs text-slate-600 leading-relaxed pl-7">
-                    {test.description}
-                  </p>
+          {/* Clean Table: Clause | Test / Requirement | Type | Method | Frequency / Sample */}
+          {filteredTests.length > 0 ? (
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="w-full text-left text-xs text-slate-700">
+                <thead className="bg-slate-900 text-white font-extrabold text-[11px] uppercase tracking-wider">
+                  <tr>
+                    <th scope="col" className="px-4 py-3.5 w-28 whitespace-nowrap">
+                      Clause
+                    </th>
+                    <th scope="col" className="px-4 py-3.5 min-w-[220px]">
+                      Test / Requirement
+                    </th>
+                    <th scope="col" className="px-4 py-3.5 w-36 whitespace-nowrap">
+                      Type
+                    </th>
+                    <th scope="col" className="px-4 py-3.5 min-w-[160px]">
+                      Method
+                    </th>
+                    <th scope="col" className="px-4 py-3.5 min-w-[160px]">
+                      Frequency / Sample
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200/80 bg-white">
+                  {filteredTests.map((test, idx) => {
+                    const isRoutine = test.type === 'Routine Test';
+                    const isAcceptance = test.type === 'Acceptance Test';
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pl-7 pt-2 border-t border-slate-200/60 text-[11px]">
-                    {test.testMethod && (
-                      <div>
-                        <span className="font-semibold text-slate-500">Method: </span>
-                        <span className="text-slate-800 font-mono">{test.testMethod}</span>
-                      </div>
-                    )}
-                    {test.frequency && (
-                      <div>
-                        <span className="font-semibold text-slate-500">Frequency: </span>
-                        <span className="text-slate-800 font-bold">{test.frequency}</span>
-                      </div>
-                    )}
-                    {test.sourcePage && (
-                      <div>
-                        <span className="font-semibold text-slate-500">Manual Citation: </span>
-                        <span className="text-bis-800 font-bold">Page {test.sourcePage}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
+                    // Format frequency / sample cleanly
+                    let freqSample = '—';
+                    if (test.frequency && test.sampleQuantity) {
+                      freqSample = test.frequency === test.sampleQuantity 
+                        ? test.frequency 
+                        : `${test.frequency} (Qty: ${test.sampleQuantity})`;
+                    } else if (test.frequency) {
+                      freqSample = test.frequency;
+                    } else if (test.sampleQuantity) {
+                      freqSample = test.sampleQuantity;
+                    }
+
+                    return (
+                      <tr 
+                        key={idx} 
+                        className="hover:bg-slate-50/80 transition-colors even:bg-slate-50/30"
+                      >
+                        {/* Clause Column */}
+                        <td className="px-4 py-3.5 font-mono font-bold text-slate-900 whitespace-nowrap align-top">
+                          {test.clause ? (
+                            <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 text-[11px] border border-slate-200">
+                              {test.clause.startsWith('Cl') || test.clause.startsWith('Clause') 
+                                ? test.clause 
+                                : `Cl. ${test.clause}`}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+
+                        {/* Test / Requirement Column */}
+                        <td className="px-4 py-3.5 align-top">
+                          <div className="font-bold text-slate-900 text-xs sm:text-sm">
+                            {test.name}
+                          </div>
+                          {test.remarks && test.remarks !== test.name && (
+                            <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                              {test.remarks}
+                            </p>
+                          )}
+                          {test.sourcePage && (
+                            <div className="mt-1 flex items-center gap-1 text-[10px] font-bold text-bis-700">
+                              <FileText className="w-3 h-3" />
+                              <span>Manual Page {test.sourcePage}</span>
+                            </div>
+                          )}
+                        </td>
+
+                        {/* Type Column */}
+                        <td className="px-4 py-3.5 align-top whitespace-nowrap">
+                          {isRoutine ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                              Routine
+                            </span>
+                          ) : isAcceptance ? (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-blue-50 text-blue-700 border border-blue-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                              Acceptance
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-indigo-50 text-indigo-700 border border-indigo-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
+                              Type Test
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Method Column */}
+                        <td className="px-4 py-3.5 align-top">
+                          {test.testMethod ? (
+                            <span className="text-xs font-mono text-slate-700">
+                              {test.testMethod}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400">—</span>
+                          )}
+                        </td>
+
+                        {/* Frequency / Sample Column */}
+                        <td className="px-4 py-3.5 align-top">
+                          <span className="text-xs text-slate-800">
+                            {freqSample}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           ) : (
-            <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-1.5">
-              <p className="text-xs font-bold text-slate-700">No routine tests recorded for this standard.</p>
+            <div className="p-8 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-2">
+              <FlaskConical className="w-8 h-8 text-slate-400 mx-auto" />
+              <p className="text-xs sm:text-sm font-bold text-slate-700">
+                {testSearch 
+                  ? 'No tests matched your search term.' 
+                  : 'No specific test records were found in the available BIS evidence for this standard.'}
+              </p>
+              {testSearch && (
+                <button
+                  type="button"
+                  onClick={() => setTestSearch('')}
+                  className="text-xs font-bold text-bis-700 hover:underline cursor-pointer"
+                >
+                  Clear search
+                </button>
+              )}
             </div>
           )}
         </div>
       )}
 
-      {/* Tab Content 2: Type Tests */}
-      {activeTab === 'type' && (
-        <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-900">
-              <Layers className="w-4 h-4 text-bis-800" />
-              <span>Type & Acceptance Tests (Initial Qualification & Surveillance)</span>
-            </div>
-            <span className="text-[11px] text-slate-500 font-semibold">Laboratory Verification</span>
-          </div>
-
-          {typeTests.length > 0 ? (
-            <div className="space-y-3">
-              {typeTests.map((test, idx) => (
-                <div key={idx} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2 hover:border-bis-300 transition-colors">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-bis-900 text-white text-[10px] font-extrabold flex items-center justify-center">
-                        {idx + 1}
-                      </span>
-                      <span>{test.name}</span>
-                    </h4>
-                    <div className="flex items-center gap-2">
-                      {test.clause && (
-                        <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase bg-slate-200 text-slate-800 rounded">
-                          Clause {test.clause}
-                        </span>
-                      )}
-                      <span className="px-2 py-0.5 text-[10px] font-extrabold uppercase rounded bg-bis-100 text-bis-900">
-                        {test.type || 'Type Test'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <p className="text-xs text-slate-600 leading-relaxed pl-7">
-                    {test.description}
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pl-7 pt-2 border-t border-slate-200/60 text-[11px]">
-                    {test.testMethod && (
-                      <div>
-                        <span className="font-semibold text-slate-500">Method: </span>
-                        <span className="text-slate-800 font-mono">{test.testMethod}</span>
-                      </div>
-                    )}
-                    {test.sampleQuantity && (
-                      <div>
-                        <span className="font-semibold text-slate-500">Sample Qty: </span>
-                        <span className="text-slate-800">{test.sampleQuantity}</span>
-                      </div>
-                    )}
-                    {test.sourcePage && (
-                      <div>
-                        <span className="font-semibold text-slate-500">Manual Citation: </span>
-                        <span className="text-bis-800 font-bold">Page {test.sourcePage}</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-1.5">
-              <p className="text-xs font-bold text-slate-700">No type tests recorded for this standard.</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Tab Content 3: Recognized Laboratories */}
+      {/* ============================================================ */}
+      {/* TAB 2: RECOGNIZED LABORATORIES                               */}
+      {/* ============================================================ */}
       {activeTab === 'labs' && (
         <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -578,7 +723,9 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
                 <MapPin className="w-4 h-4" />
               </div>
               <div>
-                <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">Proximity Reference</span>
+                <span className="text-[10px] uppercase font-bold text-slate-400 block leading-tight">
+                  Proximity Reference
+                </span>
                 <div className="text-slate-800 font-medium">
                   {activeLocationLabel ? (
                     <span>Facility / District: <strong className="text-indigo-700 font-bold">{activeLocationLabel}</strong></span>
@@ -594,7 +741,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
                 setInputLocation(activeLocationLabel || '');
                 setShowLocationModal(true);
               }}
-              className="px-3.5 py-1.5 rounded-xl border border-indigo-200 hover:border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs"
+              className="px-3.5 py-1.5 rounded-xl border border-indigo-200 hover:border-indigo-300 bg-white text-indigo-700 hover:bg-indigo-50 text-xs font-bold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
             >
               <Navigation className="w-3.5 h-3.5" />
               <span>{activeLocationLabel ? 'Change Location' : 'Set Location for Nearest Labs'}</span>
@@ -626,19 +773,28 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
               {displayedLabs.map((lab) => {
                 const hasContactInfo = !!(lab.email || lab.phone || lab.website);
                 const isContactOpen = expandedContactId === lab.id;
+                const locationParts = [lab.address, lab.city, lab.state].filter(Boolean);
+                const locationText = locationParts.join(', ');
 
                 return (
-                  <div key={lab.id} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5 hover:border-indigo-300 transition-colors flex flex-col justify-between">
+                  <div 
+                    key={lab.id} 
+                    className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5 hover:border-indigo-300 transition-colors flex flex-col justify-between"
+                  >
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-start justify-between gap-1.5">
-                        <span className={`px-2 py-0.5 text-[10px] rounded-md border ${getProximityBadgeStyle(lab.proximityTier)}`}>
-                          {lab.proximityTier}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
-                            <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                            <span>{lab.status}</span>
+                        {lab.proximityTier ? (
+                          <span className={`px-2 py-0.5 text-[10px] rounded-md border ${getProximityBadgeStyle(lab.proximityTier)}`}>
+                            {lab.proximityTier}
                           </span>
+                        ) : <div />}
+                        <div className="flex items-center gap-1">
+                          {lab.status && (
+                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1">
+                              <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                              <span>{lab.status}</span>
+                            </span>
+                          )}
                           {lab.oslCode && (
                             <span className="px-2 py-0.5 text-[10px] font-mono font-bold bg-indigo-100 text-indigo-800 rounded shrink-0">
                               OSL: {lab.oslCode}
@@ -647,32 +803,41 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
                         </div>
                       </div>
 
-                      <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
-                        {lab.labName}
-                      </h4>
+                      {lab.labName && (
+                        <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                          {lab.labName}
+                        </h4>
+                      )}
 
-                      <div className="text-xs text-slate-600 flex items-start gap-1.5">
-                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
-                        <span className="leading-relaxed">
-                          {lab.address}, {lab.city}, {lab.state} {lab.pincode && `- ${lab.pincode}`}
-                        </span>
-                      </div>
+                      {locationText && (
+                        <div className="text-xs text-slate-600 flex items-start gap-1.5">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                          <span className="leading-relaxed">
+                            {locationText}
+                          </span>
+                        </div>
+                      )}
 
                       {lab.testingScopes && lab.testingScopes.length > 0 ? (
                         <div className="text-[11px] text-slate-600 bg-white p-2.5 rounded-xl border border-slate-200/70 space-y-1.5">
                           <span className="font-semibold text-slate-700 block">
                             Testing Scopes & Charges:
                           </span>
-                          {lab.testingScopes.map((scope: any, scopeIdx: number) => (
-                            <div key={`${scope.grade_type_size || "scope"}-${scope.testing_charge ?? "na"}-${scopeIdx}`} className="flex items-center justify-between gap-3">
-                              <span className="text-slate-700">{scope.grade_type_size || "Standard testing scope"}</span>
-                              {scope.testing_charge != null && (
-                                <span className="font-mono font-bold text-emerald-700 shrink-0">
-                                  ₹{scope.testing_charge.toLocaleString()} {scope.currency || lab.currency}
-                                </span>
-                              )}
-                            </div>
-                          ))}
+                          {lab.testingScopes.map((scope: any, scopeIdx: number) => {
+                            const scopeLabel = scope.grade_type_size || (scope.remarks ? scope.remarks : null);
+                            return (
+                              <div key={scopeIdx} className="flex items-center justify-between gap-3">
+                                {scopeLabel && (
+                                  <span className="text-slate-700">{scopeLabel}</span>
+                                )}
+                                {scope.testing_charge != null && (
+                                  <span className="font-mono font-bold text-emerald-700 shrink-0">
+                                    ₹{scope.testing_charge.toLocaleString()} {scope.currency || lab.currency || ''}
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       ) : lab.remarks ? (
                         <div className="text-[11px] text-slate-600 bg-white p-2 rounded-xl border border-slate-200/70">
@@ -684,42 +849,46 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
 
                     {/* Contact & Map Action Bar */}
                     <div className="flex flex-col gap-2 pt-2.5 border-t border-slate-200/70">
-                      
-                      {/* Statutory Info */}
                       <div className="flex items-center justify-between text-xs pb-1 border-b border-slate-100">
-                        {lab.testingCharge ? (
+                        {lab.testingCharge != null ? (
                           <div>
                             <span className="text-[10px] uppercase font-bold text-slate-500">Statutory Charge: </span>
-                            <span className="font-mono font-bold text-emerald-700">₹{lab.testingCharge.toLocaleString()} {lab.currency}</span>
+                            <span className="font-mono font-bold text-emerald-700">₹{lab.testingCharge.toLocaleString()} {lab.currency || ''}</span>
                           </div>
                         ) : (
-                          <span className="text-[10px] text-slate-500">Statutory sample tariff</span>
+                          <div />
                         )}
                         {lab.sourceUrl && (
-                          <a href={lab.sourceUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900">
+                          <a 
+                            href={lab.sourceUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-700 hover:text-indigo-900"
+                          >
                             <span>Verify in LIMS</span>
                             <ExternalLink className="w-3 h-3" />
                           </a>
                         )}
                       </div>
 
-                      {/* Direct Actions (Maps & Contact) */}
                       <div className="flex items-center gap-2 w-full mt-1">
-                        <a
-                          href={getMapsUrl(lab)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 text-xs font-bold transition-colors border border-emerald-200 shadow-2xs"
-                        >
-                          <MapPin className="w-3.5 h-3.5" />
-                          <span>View on Map</span>
-                        </a>
+                        {locationText ? (
+                          <a
+                            href={getMapsUrl(lab)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 text-xs font-bold transition-colors border border-emerald-200 shadow-2xs"
+                          >
+                            <MapPin className="w-3.5 h-3.5" />
+                            <span>View on Map</span>
+                          </a>
+                        ) : null}
 
                         {hasContactInfo && (
                           <button
                             type="button"
                             onClick={() => setExpandedContactId(isContactOpen ? null : lab.id)}
-                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-2xs ${
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors shadow-2xs cursor-pointer ${
                               isContactOpen ? "bg-slate-800 text-white" : "bg-slate-900 text-white hover:bg-slate-800"
                             }`}
                           >
@@ -729,7 +898,6 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
                         )}
                       </div>
 
-                      {/* Expanded Contact Dropdown */}
                       {isContactOpen && hasContactInfo && (
                         <div className="mt-1.5 p-3 bg-white rounded-xl border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-2.5 animate-fade-in shadow-sm">
                           {lab.phone && (
@@ -753,20 +921,24 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
                         </div>
                       )}
                     </div>
-
                   </div>
                 );
               })}
             </div>
           ) : (
-            <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-1.5">
-              <p className="text-xs font-bold text-slate-700">No specific laboratory listings recorded for this standard.</p>
+            <div className="p-8 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-2">
+              <Building2 className="w-8 h-8 text-slate-400 mx-auto" />
+              <p className="text-xs sm:text-sm font-bold text-slate-700">
+                No BIS laboratory matching the selected criteria was found in the available database.
+              </p>
             </div>
           )}
         </div>
       )}
 
-      {/* Tab Content 4: Grouping & Sampling Rules */}
+      {/* ============================================================ */}
+      {/* TAB 3: GROUPING & SAMPLING RULES                             */}
+      {/* ============================================================ */}
       {activeTab === 'grouping' && (
         <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
           <div className="flex items-center justify-between gap-2">
@@ -779,50 +951,70 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
 
           {groupingRules.length > 0 ? (
             <div className="space-y-3">
-              {groupingRules.map((gr, idx) => (
-                <div key={idx} className="p-4 rounded-2xl bg-amber-50/40 border border-amber-200 space-y-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h4 className="text-xs sm:text-sm font-bold text-amber-950 flex items-center gap-2">
-                      <span className="px-2 py-0.5 rounded bg-amber-600 text-white font-mono text-[10px] font-bold">
-                        {gr.groupCode}
-                      </span>
-                      <span>{gr.groupName}</span>
-                    </h4>
-                    {gr.sourcePage && (
-                      <span className="text-[10px] font-bold text-amber-800">
-                        Manual Page {gr.sourcePage}
-                      </span>
-                    )}
-                  </div>
+              {groupingRules.map((gr, idx) => {
+                // Strictly guard: do not show empty "Sample Requirement:" fields
+                const hasSampleReq = Boolean(gr.sampleRequirement && gr.sampleRequirement.toLowerCase() !== 'none');
+                const hasPrefSample = Boolean(gr.preferredSample && gr.preferredSample.toLowerCase() !== 'none');
 
-                  <p className="text-xs text-amber-900 leading-relaxed">
-                    <strong>Condition: </strong>{gr.condition}
-                  </p>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-amber-200/60 text-xs text-amber-900">
-                    <div>
-                      <span className="font-semibold text-amber-800">Sample Requirement: </span>
-                      <span>{gr.sampleRequirement}</span>
+                return (
+                  <div key={idx} className="p-4 rounded-2xl bg-amber-50/40 border border-amber-200 space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <h4 className="text-xs sm:text-sm font-bold text-amber-950 flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-amber-600 text-white font-mono text-[10px] font-bold">
+                          {gr.groupCode}
+                        </span>
+                        <span>{gr.groupName}</span>
+                      </h4>
+                      {gr.sourcePage && (
+                        <span className="text-[10px] font-bold text-amber-800">
+                          Manual Page {gr.sourcePage}
+                        </span>
+                      )}
                     </div>
-                    {gr.preferredSample && (
-                      <div>
-                        <span className="font-semibold text-amber-800">Preferred Variety: </span>
-                        <span>{gr.preferredSample}</span>
+
+                    {gr.condition && (
+                      <p className="text-xs text-amber-900 leading-relaxed">
+                        <strong>Condition: </strong>{gr.condition}
+                      </p>
+                    )}
+
+                    {(hasSampleReq || hasPrefSample) && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-2 border-t border-amber-200/60 text-xs text-amber-900">
+                        {hasSampleReq && (
+                          <div>
+                            <span className="font-semibold text-amber-800">Sample Requirement: </span>
+                            <span>{gr.sampleRequirement}</span>
+                          </div>
+                        )}
+                        {hasPrefSample && (
+                          <div>
+                            <span className="font-semibold text-amber-800">Preferred Variety: </span>
+                            <span>{gr.preferredSample}</span>
+                          </div>
+                        )}
                       </div>
                     )}
+
+                    {gr.remarks && (
+                      <p className="text-[11px] text-amber-800/80 pt-1">
+                        <strong>Remarks: </strong>{gr.remarks}
+                      </p>
+                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ) : (
-            <div className="p-5 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-1.5">
-              <p className="text-xs font-bold text-slate-700">No grouping rules defined. Every distinct model requires separate test sample submission.</p>
+            <div className="p-6 rounded-2xl bg-slate-50 border border-dashed border-slate-300 text-center space-y-1.5">
+              <p className="text-xs font-bold text-slate-700">
+                No specific grouping or sampling rules were found in the available BIS evidence.
+              </p>
             </div>
           )}
         </div>
       )}
 
-      {/* Laboratory Facility & Sampling Protocol Summary */}
+      {/* Laboratory Facility & Sampling Protocol Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-2">
           <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-900">
@@ -845,7 +1037,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
         </div>
       </div>
 
-      {/* Ask AI Helper */}
+      {/* Ask AI Contextual Question Helper */}
       {onAskAI && (
         <div className="px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 flex items-center justify-between gap-3 flex-wrap">
           <p className="text-xs text-slate-600">
@@ -855,15 +1047,15 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
             type="button"
             onClick={() =>
               onAskAI(
-                productName
-                  ? `What are the testing requirements, routine tests, and recognized labs for ${productName}?`
+                effectiveProduct
+                  ? `What are the testing requirements, routine tests, and recognized labs for ${effectiveProduct}?`
                   : 'What are the routine tests, acceptance tests, and laboratory requirements for BIS certification?'
               )
             }
             className="inline-flex items-center gap-1.5 text-xs font-bold text-bis-900 hover:text-bis-700 transition-colors cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-            Ask Manak Setu AI about Testing & Labs
+            <span>Ask Manak Setu AI about Testing & Labs</span>
           </button>
         </div>
       )}
@@ -872,7 +1064,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
       <div className="flex items-center justify-between pt-2">
         <button
           onClick={onPrev}
-          className="px-5 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-colors"
+          className="px-5 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs sm:text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>{t('prevStepBtn') || 'Previous Step'}</span>
@@ -880,7 +1072,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
 
         <button
           onClick={onNext}
-          className="px-6 py-3 rounded-xl bg-bis-900 hover:bg-bis-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all transform active:scale-95"
+          className="px-6 py-3 rounded-xl bg-bis-900 hover:bg-bis-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all transform active:scale-95 cursor-pointer"
         >
           <span>{t('s4ContinueBtn') || 'Continue to Documents'}</span>
           <ArrowRight className="w-4 h-4 text-amber-400" />

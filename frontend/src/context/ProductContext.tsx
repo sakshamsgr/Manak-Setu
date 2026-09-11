@@ -3,6 +3,7 @@ import {
   ProductProfile, 
   ProductCertificationGuideData,
   TestItem,
+  GroupingRuleItem,
   DocumentItem,
   ApplicationMilestone
 } from '../types/compliance';
@@ -219,7 +220,17 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
       const requiredTests = [...routineTests, ...typeTests];
       const labs = testingData?.laboratories || [];
-      const groupingRules = testingData?.grouping_rules || [];
+      const rawGrouping = testingData?.grouping_rules || [];
+      const groupingRules: GroupingRuleItem[] = rawGrouping.map((gr: any) => ({
+        groupCode: gr.group_code || gr.groupCode || 'GROUP',
+        groupName: gr.group_name || gr.groupName || 'Grouping Rule',
+        condition: gr.condition || '',
+        sampleRequirement: gr.sample_requirement || gr.sampleRequirement || '',
+        preferredSample: gr.preferred_sample || gr.preferredSample || '',
+        voltageRequirement: gr.voltage_requirement || gr.voltageRequirement || '',
+        remarks: gr.remarks || '',
+        sourcePage: gr.source_page || gr.sourcePage || undefined,
+      }));
 
       const docsData = docsRes.status === 'fulfilled' ? docsRes.value : null;
       const documentChecklist: DocumentItem[] = (docsData?.documents || []).map((d: any, idx: number) => {

@@ -37,23 +37,28 @@ export const InstallModal: React.FC<InstallModalProps> = ({
           {t('install.description') || 'Install Manak Setu — Bureau of Indian Standards (BIS) AI Compliance Portal as a standalone application on your phone or desktop for instant offline access, fast loading, and official regulatory guidance.'}
         </p>
 
-        {isInstallable && (
-          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row items-center justify-between gap-3">
-            <div>
-              <div className="font-extrabold text-sm">{t('install.oneClickReady') || 'One-Click Install Ready'}</div>
-              <div className="text-xs text-amber-700">{t('install.oneClickDesc') || 'Click below to add directly to your home screen or desktop.'}</div>
-            </div>
-            <button
-              onClick={() => {
+        {/* FIX: Removed the strict "isInstallable &&" wrapper so the button is always accessible */}
+        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div>
+            <div className="font-extrabold text-sm">{t('install.oneClickReady') || 'One-Click Install Ready'}</div>
+            <div className="text-xs text-amber-700">{t('install.oneClickDesc') || 'Click below to add directly to your home screen or desktop.'}</div>
+          </div>
+          <button
+            onClick={() => {
+              if (isInstallable) {
+                // If browser allows it, trigger the native install prompt
                 onNativeInstall();
                 onClose();
-              }}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-bis-950 font-extrabold rounded-xl shadow transition-all shrink-0 text-xs sm:text-sm cursor-pointer"
-            >
-              {t('install.installNow') || 'Install App Now'}
-            </button>
-          </div>
-        )}
+              } else {
+                // If browser blocks direct installation, fallback to a helpful alert
+                alert("Native prompt is currently blocked by your browser. Please use your browser's menu (⋮) and select 'Install App' or 'Add to Home screen'.");
+              }
+            }}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-bis-950 font-extrabold rounded-xl shadow transition-all shrink-0 text-xs sm:text-sm cursor-pointer"
+          >
+            {t('install.installNow') || 'Install App Now'}
+          </button>
+        </div>
 
         {isIOS ? (
           <div className="space-y-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
@@ -107,7 +112,7 @@ export const InstallModal: React.FC<InstallModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="px-3 py-1.5 text-slate-600 hover:text-slate-900 font-semibold rounded-lg hover:bg-slate-100 transition-colors"
+            className="px-3 py-1.5 text-slate-600 hover:text-slate-900 font-semibold rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
           >
             {t('install.closeBtn') || 'Close'}
           </button>
