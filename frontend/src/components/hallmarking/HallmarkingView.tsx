@@ -34,7 +34,7 @@ import {
   FileCheck
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
-import { sendChatMessage, sendMultimodalMessage, verifyConsumerMark, ConsumerVerificationResult } from '../../services/api';
+import { sendChatMessage, sendMultimodalMessage, verifyConsumerMark, ConsumerVerificationResult, getHallmarkingCentres, HallmarkingCentre } from '../../services/api';
 import { Citation } from '../../types/chat';
 import { CitationsEvidenceGrid } from '../chat/CitationEvidenceCard';
 import { PageInfoButton } from '../common/PageInfoButton';
@@ -51,6 +51,58 @@ export const HallmarkingView: React.FC<HallmarkingViewProps> = ({ onOpenAssistan
   
   // Metal Selection: Gold vs Silver
   const [metalType, setMetalType] = useState<'gold' | 'silver'>('gold');
+  const [selectedState, setSelectedState] = useState<string>('All India');
+  const [operativeOnly, setOperativeOnly] = useState(true);
+  const [centreStates, setCentreStates] = useState<string[]>(['All India']);
+  const [centreResults, setCentreResults] = useState<HallmarkingCentre[]>([]);
+  const [centreLoading, setCentreLoading] = useState(false);
+  const [centreError, setCentreError] = useState<string | null>(null);
+  const [centreTotal, setCentreTotal] = useState(0);
+  const [centrePage, setCentrePage] = useState(1);
+  const [centreTotalPages, setCentreTotalPages] = useState(1);
+
+  useEffect(() => {
+    if (userRole !== 'business') return;
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    const loadCentres = async () => {
+      setCentreLoading(true);
+      setCentreError(null);
+      try {
+        const data = await getHallmarkingCentres({
+          state: selectedState === 'All India' ? undefined : selectedState,
+          metal: metalType,
+          operativeOnly,
+          page: centrePage,
+          limit: 12,
+          signal: controller.signal,
+        });
+
+        if (cancelled) return;
+        setCentreResults(data.centres || []);
+        setCentreTotal(data.total || 0);
+        setCentreTotalPages(data.total_pages || 1);
+        setCentreStates(data.states || ['All India']);
+        if (selectedState !== 'All India' && !data.states?.includes(selectedState)) {
+          setSelectedState('All India');
+        }
+      } catch (err: any) {
+        if (cancelled || err.name === 'AbortError') return;
+        setCentreResults([]);
+        setCentreError(err.message || 'Unable to load BIS A&H centres right now.');
+      } finally {
+        if (!cancelled) setCentreLoading(false);
+      }
+    };
+
+    loadCentres();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [userRole, metalType, selectedState, operativeOnly, centrePage]);
 
   // HUID Verifier State (Consumer Journey)
   const [huidCode, setHuidCode] = useState('');
@@ -487,6 +539,171 @@ export const HallmarkingView: React.FC<HallmarkingViewProps> = ({ onOpenAssistan
           </span>
         </div>
       </div>
+
+      {userRole === 'business' && (
+        <div className="rounded-3xl bg-white border border-slate-200 p-6 shadow-2xs space-y-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700">Find Hallmarking Centre</div>
+              <h3 className="text-lg font-extrabold text-slate-900">Locate an authorized BIS Assaying & Hallmarking Centre</h3>
+            </div>
+            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-600">
+              <Building2 className="w-3.5 h-3.5 text-bis-700" />
+              <span>AHC Directory</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-start">
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">State</label>
+              <select
+                value={selectedState}
+                onChange={(e) => {
+                  setSelectedState(e.target.value);
+                  setCentrePage(1);
+                }}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-medium text-slate-800 focus:border-bis-500 focus:ring-2 focus:ring-bis-200 outline-none"
+              >
+                {centreStates.map((state) => (
+                  <option key={state} value={state}>{state}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Gold / Silver</label>
+              <div className="flex rounded-xl border border-slate-200 bg-slate-50 p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMetalType('gold');
+                    setCentrePage(1);
+                  }}
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
+                    metalType === 'gold' ? 'bg-amber-500 text-bis-950' : 'text-slate-700'
+                  }`}
+                >
+                  Gold
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMetalType('silver');
+                    setCentrePage(1);
+                  }}
+                  className={`flex-1 rounded-lg px-3 py-2 text-xs font-bold ${
+                    metalType === 'silver' ? 'bg-slate-800 text-white' : 'text-slate-700'
+                  }`}
+                >
+                  Silver
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Filter</div>
+              <label className="flex min-h-[76px] items-center gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 shadow-xs">
+                <input
+                  type="checkbox"
+                  checked={operativeOnly}
+                  onChange={(e) => {
+                    setOperativeOnly(e.target.checked);
+                    setCentrePage(1);
+                  }}
+                  className="h-4 w-4 rounded border-slate-300 text-bis-700 focus:ring-bis-500 shrink-0"
+                />
+                <span className="leading-none">Operative only</span>
+              </label>
+            </div>
+          </div>
+
+          {centreError && (
+            <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+              {centreError}
+            </div>
+          )}
+
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {centreLoading ? (
+              <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-8 text-sm text-slate-600 flex items-center justify-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading BIS A&H centres...
+              </div>
+            ) : centreResults.length === 0 ? (
+              <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-6 text-sm text-slate-600">
+                No matching hallmarking centres found for the current filters.
+              </div>
+            ) : (
+              centreResults.map((centre) => (
+                <div key={centre.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-xs">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{centre.state || 'State not listed'}</div>
+                      <h4 className="mt-1 text-base font-bold text-slate-900">{centre.name}</h4>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${centre.status?.toLowerCase() === 'operative' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {centre.status || 'Unknown'}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 space-y-2 text-xs text-slate-600">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-3.5 h-3.5 text-slate-500" />
+                      <span>{centre.address || `${centre.city || ''}${centre.city && centre.state ? ', ' : ''}${centre.state || ''}`}</span>
+                    </div>
+                    {(centre.recognized_for || (metalType === 'gold' ? 'Gold hallmarking' : 'Silver hallmarking')) && (
+                      <div className="flex items-center gap-2">
+                        <Gem className="w-3.5 h-3.5 text-amber-600" />
+                        <span>{centre.recognized_for || (metalType === 'gold' ? 'Gold hallmarking' : 'Silver hallmarking')}</span>
+                      </div>
+                    )}
+                    {centre.telephone && (
+                      <div className="flex items-center gap-2">
+                        <Phone className="w-3.5 h-3.5 text-slate-500" />
+                        <span>{centre.telephone}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-bis-900 px-3 py-2 text-[11px] font-bold text-white hover:bg-bis-800 transition-colors"
+                  >
+                    View centre details
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+
+          {centreTotal > 0 && centreTotalPages > 1 && (
+            <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-4 text-sm text-slate-600">
+              <span>
+                Showing {Math.min((centrePage - 1) * 12 + 1, centreTotal)}-{Math.min(centrePage * 12, centreTotal)} of {centreTotal}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCentrePage((p) => Math.max(1, p - 1))}
+                  disabled={centrePage === 1}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 font-medium disabled:opacity-50"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCentrePage((p) => Math.min(centreTotalPages, p + 1))}
+                  disabled={centrePage >= centreTotalPages}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 font-medium disabled:opacity-50"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ============================================================ */}
       {/* CONSUMER JOURNEY CONTENT */}
