@@ -60,12 +60,19 @@ client = genai.Client()
 # --- 1. Setup ---
 app = FastAPI(title="BIS Multimodal RAG Assistant API")
 
-# Enable CORS for local PWA & Vite frontend
+# Enable CORS for local PWA & Vite frontend (supports any local dev port e.g. 5173, 5174, 3000)
 app.add_middleware(
     CORSMiddleware,
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$",
     allow_origins=[
         "http://localhost:5173",
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+        "http://localhost:5175",
+        "http://127.0.0.1:5175",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],

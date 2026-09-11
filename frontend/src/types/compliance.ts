@@ -117,6 +117,7 @@ export interface DocumentItem {
   category: 'Legal' | 'Technical' | 'Quality Control' | 'Testing';
   description: string;
   required: boolean;
+  requiredStatus?: string;
   applicableWhen?: string;
   responsibleParty?: string;
   sourceUrl?: string;
