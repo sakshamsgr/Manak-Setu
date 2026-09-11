@@ -24,7 +24,8 @@ import {
   Sparkles,
   Filter,
   CheckCircle2,
-  FileText
+  FileText,
+  Info
 } from 'lucide-react';
 import { TestingDetails, LabItem, StandardDetails, TestItem, GroupingRuleItem } from '../../types/compliance';
 import { PageInfoButton } from '../common/PageInfoButton';
@@ -700,6 +701,35 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
               )}
             </div>
           )}
+
+          {/* Informational Note & BIS Helpline */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-bis-50/70 border border-bis-200/80 text-bis-950 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-xs">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-bis-700 shrink-0 mt-0.5" />
+              <p className="text-xs sm:text-sm text-slate-700 leading-relaxed">
+                <span className="font-bold text-bis-900">Note:</span> Some clauses or testing requirements may not be applicable depending on the product construction, configuration, or specifications. For more specific information, ask Manak Setu AI or contact BIS consultant/specialist.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-3 shrink-0 self-start md:self-center pl-8 md:pl-0 pt-2 md:pt-0 border-t md:border-t-0 md:border-l border-bis-200/90 md:pl-5">
+              <div className="text-left">
+                <span className="text-[10px] uppercase font-bold tracking-wider text-slate-500 block leading-tight">
+                  BIS Product Certification Helpline
+                </span>
+                <span className="text-xs font-semibold text-bis-900 block mt-0.5">
+                  BIS consultant/specialist.
+                </span>
+              </div>
+              <a
+                href="tel:7669089326"
+                aria-label="Call BIS Product Certification Helpline at 7669089326"
+                className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-bis-900 hover:bg-bis-800 active:bg-bis-950 text-white text-xs sm:text-sm font-bold transition-all shadow-xs hover:shadow-sm cursor-pointer whitespace-nowrap"
+              >
+                <Phone className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>7669089326</span>
+              </a>
+            </div>
+          </div>
         </div>
       )}
 

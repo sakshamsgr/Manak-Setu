@@ -9,8 +9,10 @@ import {
   Layers,
   FileText,
   AlertTriangle,
+  Award,
   ChevronDown,
   ChevronUp,
+  FileCheck2,
   Search,
   Sparkles,
   Target,
@@ -20,6 +22,7 @@ import { StandardDetails } from '../../types/compliance';
 import { Citation } from '../../types/chat';
 import { CitationsEvidenceGrid } from '../chat/CitationEvidenceCard';
 import { useLanguage } from '../../context/LanguageContext';
+import { useProductContext } from '../../context/ProductContext';
 
 interface Step2StandardProps {
   productName: string;
@@ -73,35 +76,6 @@ function parseRelatedStandards(
     .filter((item) => item.code && item.code.length > 1);
 }
 
-/**
- * Extract key requirement bullet points from the AI reply text.
- * Only uses lines that mention common requirement keywords.
- */
-function extractKeyRequirements(replyText: string): string[] {
-  if (!replyText) return [];
-
-  const keywords = [
-    'safety', 'electrical', 'insulation', 'resistance', 'protection', 'marking',
-    'instruction', 'construction', 'heating', 'leakage', 'current', 'voltage',
-    'temperature', 'durability', 'performance', 'test', 'clause', 'requirement',
-    'conform', 'comply', 'hazard', 'shock', 'fire', 'mechanical', 'thermal',
-  ];
-
-  const lines = replyText.split('\n').map((l) => l.replace(/^[-*•\d.)]+\s*/, '').trim());
-  const matches: string[] = [];
-
-  for (const line of lines) {
-    if (line.length < 10 || line.length > 200) continue;
-    const lower = line.toLowerCase();
-    if (keywords.some((kw) => lower.includes(kw))) {
-      matches.push(line);
-    }
-    if (matches.length >= 6) break;
-  }
-
-  return matches;
-}
-
 // ─── Sub-components ─────────────────────────────────────────────────────────
 
 // ─── Main Component ──────────────────────────────────────────────────────────
@@ -115,41 +89,117 @@ export const Step2Standard: React.FC<Step2StandardProps> = ({
   onAskAI,
 }) => {
   const { t } = useLanguage();
+  const { guideData } = useProductContext();
+
   const [showFullScope, setShowFullScope] = useState(false);
-  const [showAllRequirements, setShowAllRequirements] = useState(false);
   const [showAllRelated, setShowAllRelated] = useState(false);
 
+  const activeTesting = guideData?.testingDetails;
+  const activeCert = guideData?.certificationDetails;
+  const activeDocs = guideData?.documentChecklist || [];
+  const activeStd = guideData?.standardDetails || standardDetails;
+
   const isUnverified =
-    !standardDetails.code ||
-    standardDetails.code === 'Under Standard Identification' ||
-    standardDetails.code === 'Data Not Available';
+    !activeStd.code ||
+    activeStd.code === 'Under Standard Identification' ||
+    activeStd.code === 'Data Not Available';
 
   // Use reason from backend validation if available, fall back to whyItApplies
-  const whyText = standardDetails.reason || standardDetails.whyItApplies || '';
+  const whyText = activeStd.reason || activeStd.whyItApplies || '';
 
   const parsedRelated = parseRelatedStandards(
-    standardDetails.relatedStandards || [],
-    standardDetails.code
+    activeStd.relatedStandards || [],
+    activeStd.code
   );
 
-  // Extract key requirements from raw AI reply (via whyItApplies which contains the reply text)
-  const keyRequirements = extractKeyRequirements(standardDetails.whyItApplies || '');
+  // 1. Compliance Requirements
+  const complianceReqs: string[] = [];
+  if (!isUnverified && activeStd.code) {
+    if (activeStd.whyItApplies && activeStd.whyItApplies.length > 20) {
+      complianceReqs.push(activeStd.whyItApplies);
+    } else if (activeStd.scope && activeStd.scope.length > 15) {
+      complianceReqs.push(`Mandatory conformity to specifications defined under ${activeStd.code}: ${activeStd.scope}`);
+    }
+    if (activeStd.reason && activeStd.reason !== activeStd.whyItApplies) {
+      complianceReqs.push(activeStd.reason);
+    }
+    if (activeCert?.keyConditions && activeCert.keyConditions.length > 0) {
+      activeCert.keyConditions.forEach((cond) => {
+        if (!complianceReqs.includes(cond)) {
+          complianceReqs.push(cond);
+        }
+      });
+    }
+  }
+
+  // 2. Testing Requirements (from verified routine and type tests)
+  const testingReqs: string[] = [];
+  if (activeTesting?.routineTests && activeTesting.routineTests.length > 0) {
+    activeTesting.routineTests.slice(0, 3).forEach((t) => {
+      const clauseStr = t.clause ? ` (${t.clause})` : '';
+      const methodStr = t.testMethod && !t.testMethod.toLowerCase().includes('bis standard method') ? ` — Method: ${t.testMethod}` : '';
+      testingReqs.push(`${t.name}${clauseStr}: Routine in-house factory test required for every production unit${methodStr}.`);
+    });
+  } else if (activeTesting?.requiredTests && activeTesting.requiredTests.length > 0) {
+    activeTesting.requiredTests.slice(0, 3).forEach((t) => {
+      const clauseStr = t.clause ? ` (${t.clause})` : '';
+      testingReqs.push(`${t.name}${clauseStr}: ${t.description || 'Statutory laboratory verification test.'}`);
+    });
+  }
+
+  // 3. Certification / QCO
+  const certReqs: string[] = [];
+  if (activeCert) {
+    if (activeCert.qcoName) {
+      certReqs.push(`Quality Control Order: ${activeCert.qcoName}${activeCert.notifyingAuthority ? ` (Notified by ${activeCert.notifyingAuthority})` : ''}.`);
+    }
+    if (activeCert.scheme) {
+      certReqs.push(`Certification Scheme: ${activeCert.scheme}${activeCert.isMandatory ? ' (Mandatory for sale in India)' : ' (Voluntary certification)'}.`);
+    }
+    if (activeCert.complianceDeadline && activeCert.complianceDeadline !== 'None') {
+      certReqs.push(`Enforcement Deadline: Compliance required from ${activeCert.complianceDeadline}.`);
+    }
+  }
+
+  // 4. Documents / Records
+  const documentReqs: string[] = [];
+  if (activeDocs && activeDocs.length > 0) {
+    activeDocs.slice(0, 3).forEach((doc) => {
+      documentReqs.push(`${doc.title}: ${doc.description || 'Statutory application documentation requirement.'}`);
+    });
+  }
+
+  // Source & Citation
+  const evidenceSource =
+    activeStd.evidenceDocument ||
+    activeStd.officialSource ||
+    (citations && citations.length > 0 && citations[0].document ? citations[0].document : null) ||
+    (activeStd.code && !isUnverified ? `Bureau of Indian Standards (${activeStd.code})` : null);
+
+  const evidenceUrl =
+    activeStd.officialUrl ||
+    (citations && citations.length > 0 && citations[0].url ? citations[0].url : null);
+
+  const hasAnyRequirements =
+    complianceReqs.length > 0 ||
+    testingReqs.length > 0 ||
+    certReqs.length > 0 ||
+    documentReqs.length > 0;
 
   // Visible related standards (first 3 unless expanded)
   const visibleRelated = showAllRelated ? parsedRelated : parsedRelated.slice(0, 3);
-  const visibleRequirements = showAllRequirements ? keyRequirements : keyRequirements.slice(0, 4);
 
   // Clean scope text — truncate if too long
-  const scopeText = standardDetails.scope || '';
+  const scopeText = activeStd.scope || '';
   const truncatedScope = scopeText.length > 250 ? scopeText.slice(0, 250) + '…' : scopeText;
   const displayScope = showFullScope ? scopeText : truncatedScope;
 
   // Build official BIS URL
   const officialUrl =
-    standardDetails.officialUrl ||
-    (standardDetails.code && standardDetails.code !== 'Under Standard Identification'
+    activeStd.officialUrl ||
+    (activeStd.code && activeStd.code !== 'Under Standard Identification'
       ? `https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/knowyourstandards/indian_standards/isdetails?is_no=${encodeURIComponent(
-          standardDetails.code.replace(/[^a-zA-Z0-9]/g, '')
+          activeStd.code.replace(/[^a-zA-Z0-9]/g, '')
         )}`
       : 'https://www.services.bis.gov.in');
 
@@ -305,14 +355,14 @@ export const Step2Standard: React.FC<Step2StandardProps> = ({
       </div>
 
       {/* ── 4. KEY REQUIREMENTS ──────────────────────────────────────── */}
-      <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
+      <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <div className="p-1.5 rounded-lg bg-violet-50 text-violet-700">
               <Zap className="w-4 h-4" />
             </div>
             <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-              Key Requirements
+              KEY REQUIREMENTS
             </span>
           </div>
           <span className="text-[10px] text-slate-400 font-medium">
@@ -320,44 +370,110 @@ export const Step2Standard: React.FC<Step2StandardProps> = ({
           </span>
         </div>
 
-        {keyRequirements.length > 0 ? (
-          <>
-            <ul className="space-y-2">
-              {visibleRequirements.map((req, i) => (
-                <li
-                  key={i}
-                  className="flex items-start gap-2.5 p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs text-slate-700 leading-relaxed"
-                >
-                  <span className="mt-0.5 w-4 h-4 rounded-full bg-bis-100 text-bis-800 text-[9px] font-extrabold flex items-center justify-center shrink-0">
-                    {i + 1}
-                  </span>
-                  <span>{req}</span>
-                </li>
-              ))}
-            </ul>
-            {keyRequirements.length > 4 && (
-              <button
-                onClick={() => setShowAllRequirements(!showAllRequirements)}
-                className="text-xs font-semibold text-bis-700 hover:text-bis-900 flex items-center gap-1 transition-colors mt-1"
-              >
-                {showAllRequirements ? (
-                  <>
-                    <ChevronUp className="w-3.5 h-3.5" />
-                    <span>Show Less</span>
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="w-3.5 h-3.5" />
-                    <span>View All Requirements ({keyRequirements.length})</span>
-                  </>
-                )}
-              </button>
+        {hasAnyRequirements ? (
+          <div className="space-y-4 pt-1">
+            {/* Compliance Requirements */}
+            {complianceReqs.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-bis-700" />
+                  <span>Compliance Requirements</span>
+                </h4>
+                <ul className="space-y-1.5 pl-1">
+                  {complianceReqs.map((req, idx) => (
+                    <li key={idx} className="text-xs text-slate-600 flex items-start gap-2 leading-relaxed">
+                      <span className="text-bis-600 font-bold shrink-0 mt-0.5">•</span>
+                      <span>{req}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             )}
-          </>
+
+            {/* Testing Requirements */}
+            {testingReqs.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <FileCheck2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Testing Requirements</span>
+                </h4>
+                <ul className="space-y-1.5 pl-1">
+                  {testingReqs.map((req, idx) => (
+                    <li key={idx} className="text-xs text-slate-600 flex items-start gap-2 leading-relaxed">
+                      <span className="text-emerald-600 font-bold shrink-0 mt-0.5">•</span>
+                      <span>{req}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Certification / QCO */}
+            {certReqs.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <Award className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Certification / QCO</span>
+                </h4>
+                <ul className="space-y-1.5 pl-1">
+                  {certReqs.map((req, idx) => (
+                    <li key={idx} className="text-xs text-slate-600 flex items-start gap-2 leading-relaxed">
+                      <span className="text-amber-600 font-bold shrink-0 mt-0.5">•</span>
+                      <span>{req}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Documents / Records */}
+            {documentReqs.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <BookOpen className="w-3.5 h-3.5 text-sky-600" />
+                  <span>Documents / Records</span>
+                </h4>
+                <ul className="space-y-1.5 pl-1">
+                  {documentReqs.map((req, idx) => (
+                    <li key={idx} className="text-xs text-slate-600 flex items-start gap-2 leading-relaxed">
+                      <span className="text-sky-600 font-bold shrink-0 mt-0.5">•</span>
+                      <span>{req}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Source / Citation */}
+            {evidenceSource && (
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 flex-wrap gap-2">
+                <div className="flex items-center gap-1">
+                  <span className="font-semibold text-slate-600">Source:</span>
+                  <span>{evidenceSource}</span>
+                </div>
+                {evidenceUrl && (
+                  <a
+                    href={evidenceUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-bis-700 hover:text-bis-900 font-semibold"
+                  >
+                    <span>View Official BIS Evidence</span>
+                    <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+            )}
+          </div>
         ) : (
-          <p className="text-xs text-slate-400 italic">
-            Detailed requirements could not be verified from the available BIS evidence.
-          </p>
+          <div className="py-3 text-center space-y-1 bg-slate-50 rounded-xl p-4 border border-slate-100">
+            <p className="text-xs font-medium text-slate-600">
+              No verified key requirements were found in the available BIS evidence for this standard.
+            </p>
+            <p className="text-[11px] text-slate-400">
+              Please verify the applicable requirements using the official BIS source or ask Manak Setu AI.
+            </p>
+          </div>
         )}
       </div>
 
