@@ -51,7 +51,7 @@ export const en = {
     "listening": "Listening...",
     "startGuide": "Start Product Certification Guide",
     "analyzing": "Analyzing",
-    "samplePrompts": "Explore Common Product Queries:"
+    "samplePrompts": "EXPLORE COMMON PRODUCT QUERIES:"
   },
   "productGuide": {
     "title": "BIS Product Certification Guide",

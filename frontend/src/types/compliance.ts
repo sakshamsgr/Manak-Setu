@@ -64,7 +64,17 @@ export interface CertificationDetails {
   msmeBenefitDetails?: string;
 }
 
+export interface RegulatoryUpdateInfo {
+  notificationId: string;
+  title: string;
+  message: string;
+  createdAt: string;
+  badge?: string;
+  source?: string;
+}
+
 export interface TestItem {
+  id?: number | string;
   name: string;
   type: 'Routine Test' | 'Type Test' | 'Acceptance Test';
   description: string;
@@ -75,6 +85,9 @@ export interface TestItem {
   sampleQuantity?: string;
   remarks?: string;
   sourcePage?: number | string;
+  isUpdated?: boolean;
+  regulatoryUpdate?: RegulatoryUpdateInfo;
+  regulatorySource?: string;
 }
 
 export interface LabItem {
@@ -109,6 +122,9 @@ export interface TestingDetails {
   groupingRules?: GroupingRuleItem[];
   labInfo: string;
   samplingProtocol: string;
+  regulatoryNoticeCount?: number;
+  hasRegulatoryUpdates?: boolean;
+  unmappedWarning?: string | null;
 }
 
 export interface DocumentItem {
