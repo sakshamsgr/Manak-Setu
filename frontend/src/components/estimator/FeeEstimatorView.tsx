@@ -424,34 +424,34 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
         </div>
       )}
 
-      {/* Results Card / Itemized Receipt */}
+ {/* Results Card / Itemized Receipt */}
       {result && (
-        <div className="bg-white rounded-3xl shadow-card border border-slate-200 overflow-hidden animate-slide-up space-y-6 print-container">
+        <div className="bg-white rounded-3xl shadow-card border border-slate-200 overflow-hidden animate-slide-up space-y-6 print-container w-full">
           {/* Result Header */}
-          <div className="p-6 sm:p-8 bg-gradient-to-r from-slate-900 to-bis-950 text-white flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/30 rounded">
+          <div className="p-5 sm:p-8 bg-gradient-to-r from-slate-900 to-bis-950 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 w-full">
+            <div className="w-full md:w-auto">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider bg-amber-400/20 text-amber-300 border border-amber-400/30 rounded whitespace-nowrap">
                   {result.is_foreign ? 'Foreign Manufacturer (FMCS)' : `${result.industry_scale.toUpperCase()} ENTERPRISE`}
                 </span>
-                <span className="text-xs text-slate-400 font-mono">
+                <span className="text-xs text-slate-400 font-mono whitespace-nowrap">
                   Currency: {result.currency} ({result.currency_symbol})
                 </span>
               </div>
-              <h2 className="text-lg sm:text-xl font-extrabold mt-1 text-white">
+              <h2 className="text-base sm:text-xl font-extrabold mt-2 text-white leading-tight">
                 {t('estimator.receiptTitle') || 'Estimated Cost Breakdown & Itemized Receipt'}: {currentStandard?.code}
               </h2>
-              <div className="text-xs text-slate-300 font-medium">
+              <div className="text-xs sm:text-sm text-slate-300 font-medium mt-1 leading-snug">
                 {currentStandard?.title}
               </div>
             </div>
 
             {totalConcessionSaved > 0 && !result.is_foreign && (
-              <div className="px-4 py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-center shrink-0">
+              <div className="w-full md:w-auto px-4 py-3 sm:py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-center shrink-0 mt-2 md:mt-0">
                 <div className="text-[10px] uppercase font-extrabold tracking-wider text-emerald-400">
                   MSME Subsidy Savings
                 </div>
-                <div className="text-base font-extrabold text-white">
+                <div className="text-base sm:text-lg font-extrabold text-white">
                   ₹{totalConcessionSaved.toLocaleString('en-IN')} Saved ({result.concession_percentage}%)
                 </div>
               </div>
@@ -459,89 +459,92 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
           </div>
 
           {/* Breakdown Table */}
-          <div className="p-6 sm:p-8 space-y-6">
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs sm:text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase text-[11px] bg-slate-50">
-                    <th className="py-3 px-4">Fee Component & Regulatory Schedule</th>
-                    <th className="py-3 px-4 text-right">Standard Tariff</th>
-                    <th className="py-3 px-4 text-right text-emerald-600">MSME Concession</th>
-                    <th className="py-3 px-4 text-right text-slate-900">Net Payable</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {result.items.map((item, i) => (
-                    <tr key={i} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900">{item.category}</div>
-                        <div className="text-[11px] text-slate-500 font-medium">{item.notes}</div>
+          <div className="px-5 pb-6 sm:p-8 sm:pt-2 space-y-6">
+            {/* Mobile Scroll Wrapper with Negative Margins to allow edge-to-edge scrolling on phones */}
+            <div className="overflow-x-auto -mx-5 px-5 sm:mx-0 sm:px-0 w-[100vw] sm:w-full max-w-full">
+              <div className="inline-block min-w-full align-middle">
+                <table className="w-full text-left text-xs sm:text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] sm:text-[11px] bg-slate-50">
+                      <th className="py-3 px-4 min-w-[220px]">Fee Component & Regulatory Schedule</th>
+                      <th className="py-3 px-4 text-right whitespace-nowrap min-w-[100px]">Standard Tariff</th>
+                      <th className="py-3 px-4 text-right text-emerald-600 whitespace-nowrap min-w-[120px]">MSME Concession</th>
+                      <th className="py-3 px-4 text-right text-slate-900 whitespace-nowrap min-w-[100px]">Net Payable</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {result.items.map((item, i) => (
+                      <tr key={i} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 px-4 min-w-[220px]">
+                          <div className="font-bold text-slate-900 leading-snug">{item.category}</div>
+                          <div className="text-[10px] sm:text-[11px] text-slate-500 font-medium mt-0.5 leading-relaxed">{item.notes}</div>
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono text-slate-600 whitespace-nowrap">
+                          {result.currency_symbol}{item.amount.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-600 whitespace-nowrap">
+                          {item.concession > 0 ? `- ${result.currency_symbol}${item.concession.toLocaleString('en-IN')}` : '—'}
+                        </td>
+                        <td className="py-3.5 px-4 text-right font-mono font-extrabold text-slate-900 whitespace-nowrap">
+                          {result.currency_symbol}{item.net.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    {/* Subtotal */}
+                    <tr className="border-t border-slate-200 bg-slate-50/70 font-semibold text-slate-700">
+                      <td colSpan={3} className="py-3 px-4 text-right text-xs">
+                        Subtotal (Before Tax):
                       </td>
-                      <td className="py-3.5 px-4 text-right font-mono text-slate-600">
-                        {result.currency_symbol}{item.amount.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-600">
-                        {item.concession > 0 ? `- ${result.currency_symbol}${item.concession.toLocaleString('en-IN')}` : '—'}
-                      </td>
-                      <td className="py-3.5 px-4 text-right font-mono font-extrabold text-slate-900">
-                        {result.currency_symbol}{item.net.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
+                      <td className="py-3 px-4 text-right font-mono text-slate-900 font-bold whitespace-nowrap">
+                        {result.currency_symbol}{result.subtotal.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
                       </td>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  {/* Subtotal */}
-                  <tr className="border-t border-slate-200 bg-slate-50/70 font-semibold text-slate-700">
-                    <td colSpan={3} className="py-2.5 px-4 text-right text-xs">
-                      Subtotal (Before Tax):
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono text-slate-900 font-bold">
-                      {result.currency_symbol}{result.subtotal.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
-                    </td>
-                  </tr>
 
-                  {/* GST or Overseas Tax */}
-                  <tr className="border-t border-slate-100 bg-slate-50/70 font-semibold text-slate-700">
-                    <td colSpan={3} className="py-2.5 px-4 text-right text-xs">
-                      {result.is_foreign ? 'Regulatory Tax / Duty (Overseas Zero-Rated):' : `GST on Statutory Services (${result.tax_rate_percentage}%):`}
-                    </td>
-                    <td className="py-2.5 px-4 text-right font-mono text-slate-900 font-bold">
-                      {result.currency_symbol}{result.tax_amount.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
-                    </td>
-                  </tr>
+                    {/* GST or Overseas Tax */}
+                    <tr className="border-t border-slate-100 bg-slate-50/70 font-semibold text-slate-700">
+                      <td colSpan={3} className="py-3 px-4 text-right text-xs">
+                        {result.is_foreign ? 'Regulatory Tax / Duty (Overseas Zero-Rated):' : `GST on Statutory Services (${result.tax_rate_percentage}%):`}
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-slate-900 font-bold whitespace-nowrap">
+                        {result.currency_symbol}{result.tax_amount.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
+                      </td>
+                    </tr>
 
-                  {/* Total Year 1 */}
-                  <tr className="border-t-2 border-slate-900 bg-bis-50/80 font-bold">
-                    <td colSpan={3} className="py-4 px-4 text-xs sm:text-sm text-bis-950 font-extrabold">
-                      {t('estimator.year1Total') || 'Total Estimated First-Year Statutory Investment (incl. 18% GST):'}
-                    </td>
-                    <td className="py-4 px-4 text-right font-mono text-base sm:text-lg text-bis-900 font-extrabold">
-                      {result.currency_symbol}{result.total_year_1.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
-                    </td>
-                  </tr>
+                    {/* Total Year 1 */}
+                    <tr className="border-t-2 border-slate-900 bg-bis-50/80 font-bold">
+                      <td colSpan={3} className="py-4 px-4 text-[11px] sm:text-sm text-bis-950 font-extrabold text-right">
+                        {t('estimator.year1Total') || 'Total Estimated First-Year Statutory Investment (incl. 18% GST):'}
+                      </td>
+                      <td className="py-4 px-4 text-right font-mono text-base sm:text-lg text-bis-900 font-extrabold whitespace-nowrap">
+                        {result.currency_symbol}{result.total_year_1.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
+                      </td>
+                    </tr>
 
-                  {/* Year 2 Recurring */}
-                  <tr className="border-t border-bis-200 bg-slate-100/70 font-bold text-slate-700">
-                    <td colSpan={3} className="py-3 px-4 text-xs text-slate-600">
-                      <div className="font-bold">{t('estimator.year2Recurring') || 'Year 2 Recurring / Renewal Outlay:'}</div>
-                      <div className="text-[11px] font-normal text-slate-500">Covers annual licence fee and minimum marking fee with applicable taxes.</div>
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono text-sm text-slate-800 font-bold">
-                      {result.currency_symbol}{result.annual_recurring_year_2.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                    {/* Year 2 Recurring */}
+                    <tr className="border-t border-bis-200 bg-slate-100/70 font-bold text-slate-700">
+                      <td colSpan={3} className="py-3 px-4 text-right">
+                        <div className="text-xs font-bold text-slate-700">{t('estimator.year2Recurring') || 'Year 2 Recurring / Renewal Outlay:'}</div>
+                        <div className="text-[10px] font-normal text-slate-500 mt-0.5 hidden sm:block">Covers annual licence fee and minimum marking fee with applicable taxes.</div>
+                      </td>
+                      <td className="py-3 px-4 text-right font-mono text-sm text-slate-800 font-bold whitespace-nowrap">
+                        {result.currency_symbol}{result.annual_recurring_year_2.toLocaleString(result.is_foreign ? 'en-US' : 'en-IN')}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             </div>
 
             {/* Optimization Guidelines */}
             {result.optimization_guidelines && result.optimization_guidelines.length > 0 && (
-              <div className="p-5 rounded-2xl bg-sky-50/70 border border-sky-200 text-xs text-sky-950 space-y-2">
+              <div className="p-4 sm:p-5 rounded-2xl bg-sky-50/70 border border-sky-200 text-xs text-sky-950 space-y-2 w-full">
                 <div className="font-bold flex items-center gap-1.5 text-sky-900">
-                  <ShieldAlert className="w-4 h-4 text-sky-700" />
+                  <ShieldAlert className="w-4 h-4 text-sky-700 shrink-0" />
                   <span>Statutory Fee Optimization Guidelines:</span>
                 </div>
-                <ul className="list-disc pl-5 space-y-1 text-sky-800 text-[11px] leading-relaxed">
+                <ul className="list-disc pl-6 space-y-1.5 text-sky-800 text-[11px] sm:text-xs leading-relaxed">
                   {result.optimization_guidelines.map((guide, idx) => (
                     <li key={idx}>{guide}</li>
                   ))}
@@ -550,23 +553,23 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
             )}
 
             {/* Disclaimer Alert */}
-            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900 space-y-1">
+            <div className="p-4 rounded-2xl bg-amber-50/70 border border-amber-200 text-xs text-amber-900 space-y-1 w-full">
               <div className="font-bold flex items-center gap-1.5">
-                <Info className="w-4 h-4 text-amber-700" />
+                <Info className="w-4 h-4 text-amber-700 shrink-0" />
                 <span>Statutory Tariff Distinction Notice:</span>
               </div>
-              <p className="leading-relaxed text-amber-800 text-[11px]">
+              <p className="leading-relaxed text-amber-800 text-[10px] sm:text-[11px] mt-1">
                 {t('estimator.statutoryNote') || 'Official statutory BIS fees (Application, Inspection, Annual Marking) are fixed by Gazette notification under BIS (Conformity Assessment) Regulations 2018. Laboratory testing charges are market-based estimates and vary depending on the chosen NABL laboratory tariff.'}
               </p>
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 no-print">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-2 no-print w-full">
               <button
                 onClick={handlePrint}
-                className="w-full sm:w-auto px-4 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-xs"
+                className="w-full sm:w-auto px-4 py-2.5 sm:py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors shadow-sm active:scale-95"
               >
-                <Printer className="w-3.5 h-3.5" />
+                <Printer className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                 <span>Print Official Breakdown</span>
               </button>
 
@@ -577,11 +580,11 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
                       `Please explain the detailed statutory fee schedule, inspection charges, and document checklist for ${currentStandard?.code} (${currentStandard?.title}) for a ${result.industry_scale} enterprise.`
                     )
                   }
-                  className="w-full sm:w-auto px-5 py-2 rounded-xl bg-bis-800 hover:bg-bis-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-md transition-colors"
+                  className="w-full sm:w-auto px-5 py-2.5 sm:py-2 rounded-xl bg-bis-800 hover:bg-bis-700 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-md transition-colors active:scale-95"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <Sparkles className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-amber-300" />
                   <span>Consult AI on this Fee Structure</span>
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  <ArrowRight className="w-4 h-4 sm:w-3.5 sm:h-3.5" />
                 </button>
               )}
             </div>

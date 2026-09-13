@@ -278,58 +278,59 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
               </div>
             </div>
 
-            {/* Domestic vs Foreign Toggle + Submit Action */}
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-6">
               
-              {/* Domestic vs Foreign Toggle */}
-              <div className="flex items-center gap-6 shrink-0">
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
-                  <input
-                    type="radio"
-                    name="origin"
-                    checked={!productProfile.isForeign}
-                    onChange={() => updateProductProfile({ isForeign: false })}
-                    className="text-bis-800 focus:ring-bis-500"
-                  />
-                  <span>{t('s1Domestic') || 'Domestic Indian Manufacturer'}</span>
-                </label>
+{/* Bottom Action Area: Toggles & Submit Button */}
+              <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 pt-4 mt-2 w-full">
+                
+                {/* Domestic vs Foreign Toggle */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 w-full lg:w-auto">
+                  <label className="flex items-center gap-2 cursor-pointer text-xs sm:text-sm font-semibold text-slate-700">
+                    <input
+                      type="radio"
+                      name="origin"
+                      checked={!productProfile.isForeign}
+                      onChange={() => updateProductProfile({ isForeign: false })}
+                      className="w-4 h-4 text-bis-800 focus:ring-bis-500 shrink-0 cursor-pointer"
+                    />
+                    <span>{t('s1Domestic') || 'Domestic Indian Manufacturer'}</span>
+                  </label>
 
-                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-700">
-                  <input
-                    type="radio"
-                    name="origin"
-                    checked={productProfile.isForeign}
-                    onChange={() => updateProductProfile({ isForeign: true })}
-                    className="text-bis-800 focus:ring-bis-500"
-                  />
-                  <span>{t('s1Foreign') || 'Foreign Manufacturer (FMCS)'}</span>
-                </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-xs sm:text-sm font-semibold text-slate-700">
+                    <input
+                      type="radio"
+                      name="origin"
+                      checked={productProfile.isForeign}
+                      onChange={() => updateProductProfile({ isForeign: true })}
+                      className="w-4 h-4 text-bis-800 focus:ring-bis-500 shrink-0 cursor-pointer"
+                    />
+                    <span>{t('s1Foreign') || 'Foreign Manufacturer (FMCS)'}</span>
+                  </label>
+                </div>
+
+                {/* Submit Action */}
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className={`w-full lg:w-auto shrink-0 justify-center px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md active:scale-95 ${
+                    isLoading
+                      ? 'bg-blue-800 text-white cursor-wait opacity-90'
+                      : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-blue-900/20 hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500'
+                  }`}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-amber-300 shrink-0" />
+                      <span>{t('hero.analyzing') || 'Building Guide...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+                      <span>{t('hero.startGuide') || 'Start Product Certification Guide'}</span>
+                      <ArrowRight className="w-4 h-4 shrink-0" />
+                    </>
+                  )}
+                </button>
               </div>
-
-              {/* Submit Action */}
-              <button
-                type="submit"
-                disabled={isLoading}
-                className={`shrink-0 px-6 py-3 rounded-xl font-extrabold text-xs sm:text-sm flex items-center gap-2 transition-all shadow-md active:scale-95 ${
-                  isLoading
-                    ? 'bg-blue-800 text-white cursor-wait opacity-90'
-                    : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white shadow-blue-900/20 hover:shadow-lg cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500'
-                }`}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin text-amber-300" />
-                    <span>{t('hero.analyzing') || 'Building Guide...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 text-amber-300" />
-                    <span>{t('hero.startGuide') || 'Start Product Certification Guide'}</span>
-                    <ArrowRight className="w-4 h-4" />
-                  </>
-                )}
-              </button>
-            </div>
           </form>
 
           {/* 2-Column Balanced Section: Explore Common Queries (LEFT) & Saved Product Details/Steps (RIGHT) */}
