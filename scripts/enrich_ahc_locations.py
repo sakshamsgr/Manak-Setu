@@ -28,9 +28,8 @@ REVIEW_CSV_PATH = ROOT_DIR / "ahc_location_review_v2.csv"
 SUMMARY_CSV_PATH = ROOT_DIR / "ahc_location_summary_v2.csv"
 PINCODE_CACHE_PATH = ROOT_DIR / "ahc_pincode_cache.json"
 
-DB_URI = os.getenv("DB_URI") or os.getenv("DATABASE_URL") or (
-    "postgresql://postgres.ndpfmlkhxjphooyzvdxk:sih_2026_sssddr@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
-)
+DB_URI = os.getenv("DB_URI") or os.getenv("DATABASE_URL") or os.getenv("SUPABASE_DB_URI")
+
 
 STATE_ALIASES = {
     "ANDHRA PRADESH": {"ANDHRA PRADESH", "ANDHRA", "AP", "A.P."},

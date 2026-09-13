@@ -8,7 +8,7 @@ from google.genai import types
 # 1. Setup Connections
 # REPLACE THIS WITH YOUR DIRECT CONNECTION STRING URI
 
-DB_URI = "postgresql://postgres.ndpfmlkhxjphooyzvdxk:sih_2026_sssddr@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+DB_URI = os.getenv("DB_URI")  # Ensure this is set in your .env file
 print("Connecting to Supabase...")
 conn = psycopg2.connect(DB_URI)
 register_vector(conn)

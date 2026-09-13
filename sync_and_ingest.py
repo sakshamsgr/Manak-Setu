@@ -13,12 +13,11 @@ from dotenv import load_dotenv
 load_dotenv()  # Reads the .env file and sets GEMINI_API_KEY in the environment
 
 # --- Configuration ---
-SUPABASE_URL = "https://ndpfmlkhxjphooyzvdxk.supabase.co"
-# Find your 'service_role' or 'anon' key under Project Settings -> API Keys
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kcGZtbGtoeGpwaG9veXp2ZHhrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODA2NzA4NiwiZXhwIjoyMTAzNjQzMDg2fQ.XplZIcOAmHS5O5J80bEvyMtb1UF79XyUfpLZ3TEOgDQ"
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 BUCKET_NAME = "bis_pdfs"
 
-DB_URI = "postgresql://postgres.ndpfmlkhxjphooyzvdxk:sih_2026_sssddr@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+DB_URI = os.getenv("DB_URI")  # Ensure this is set in your .env file
 
 # Tesseract binary path (adjust if needed on Windows)
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"

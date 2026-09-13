@@ -81,7 +81,7 @@ app.add_middleware(
 )
 
 # Supabase Session Pooler URI
-DB_URI = os.getenv("DB_URI", "postgresql://postgres.ndpfmlkhxjphooyzvdxk:sih_2026_sssddr@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres")
+DB_URI = os.getenv("DB_URI")
 
 def get_db():
     conn = psycopg2.connect(DB_URI)
@@ -3396,8 +3396,8 @@ async def sync_bis_regulatory_monitor():
     import urllib.request
     import urllib.error
 
-    supabase_url = os.getenv("SUPABASE_URL", "https://ndpfmlkhxjphooyzvdxk.supabase.co")
-    supabase_key = os.getenv("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kcGZtbGtoeGpwaG9veXp2ZHhrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODA2NzA4NiwiZXhwIjoyMTAzNjQzMDg2fQ.XplZIcOAmHS5O5J80bEvyMtb1UF79XyUfpLZ3TEOgDQ")
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
 
     edge_fn_url = f"{supabase_url.rstrip('/')}/functions/v1/bis-regulatory-monitor"
     req = urllib.request.Request(

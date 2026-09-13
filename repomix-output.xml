@@ -9100,13 +9100,12 @@ from google import genai
 from google.genai import types
 
 # --- Configuration ---
-SUPABASE_URL = "https://ndpfmlkhxjphooyzvdxk.supabase.co"
+SUPABASE_URL = os.getenv("SUPABASE_URL")
 # Find your 'service_role' or 'anon' key under Project Settings -> API Keys
-SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5kcGZtbGtoeGpwaG9veXp2ZHhrIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4ODA2NzA4NiwiZXhwIjoyMTAzNjQzMDg2fQ.XplZIcOAmHS5O5J80bEvyMtb1UF79XyUfpLZ3TEOgDQ"
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 BUCKET_NAME = "bis_pdfs"
 
-DB_URI = "postgresql://postgres.ndpfmlkhxjphooyzvdxk:sih_2026_sssddr@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
-
+DB_URI = os.getenv("DB_URI")  # e.g., "postgresql://user:password@host:port/database"
 # Tesseract binary path (adjust if needed on Windows)
 pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
@@ -9258,7 +9257,7 @@ from google.genai import types
 # 1. Setup Connections
 # REPLACE THIS WITH YOUR DIRECT CONNECTION STRING URI
 
-DB_URI = "postgresql://postgres.ndpfmlkhxjphooyzvdxk:sih_2026_sssddr@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+DB_URI = os.getenv("DB_URI")  # e.g., "postgresql://user:password@host:port/database"
 print("Connecting to Supabase...")
 conn = psycopg2.connect(DB_URI)
 register_vector(conn)
@@ -9427,7 +9426,7 @@ app.add_middleware(
 )
 
 # Supabase Session Pooler URI
-DB_URI = "postgresql://postgres.ndpfmlkhxjphooyzvdxk:sih_2026_sssddr@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres"
+DB_URI =  os.getenv("DB_URI")  # e.g., "postgresql://user:password@host:port/database"
 
 # In-memory session store
 chat_sessions = {}
