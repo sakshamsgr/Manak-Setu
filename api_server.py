@@ -702,14 +702,8 @@ async def login(req: LoginRequest, response: Response):
     access_token = create_access_token(
         data={"sub": clean_email, "name": user_name}
     )
-    response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="lax", secure=SECURE_COOKIE)
+    response.set_cookie(key="bis_session", value=access_token, httponly=True, samesite="none", secure=True)
     return {"message": "Login successful", "user": {"email": clean_email, "name": user_name}}
-
-@app.post("/auth/logout")
-async def logout(response: Response):
-    # Ensure samesite="none" and secure=True are here too!
-    response.delete_cookie("bis_session", httponly=True, samesite="none", secure=True)
-    return {"message": "Logged out successfully"}
 
 @app.post("/auth/forgot-password")
 async def forgot_password(req: ForgotPasswordRequest):
@@ -819,7 +813,7 @@ async def get_me(request: Request):
 
 @app.post("/auth/logout")
 async def logout(response: Response):
-    response.delete_cookie("bis_session", httponly=True, samesite="lax")
+    response.delete_cookie("bis_session", httponly=True, samesite="none", secure=True)
     return {"message": "Logged out successfully"}
 
 @app.post("/auth/send-otp")
