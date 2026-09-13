@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://manak-setu-8no0.onrender.com/api/:path*"
+    },
+    {
+      "source": "/auth/:path*",
+      "destination": "https://manak-setu-8no0.onrender.com/auth/:path*"
+    }
+  ]
+}

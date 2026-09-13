@@ -6,12 +6,14 @@ import { RawBackendResponse, ChatNormalizedResponse, Citation } from '../types/c
  * Falls back to /api or Vite proxy if direct cross-origin is restricted.
  */
 // 1. Automatically detect if the site is running on your local computer
+// 1. Detect if running on your local computer
 const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
-// 2. Dynamically set the URL: Localhost stays local, Vercel talks to Render
+// 2. Localhost stays local. But on Vercel, we leave it EMPTY!
+// An empty string forces the browser to request from the current Vercel domain, which triggers our proxy!
 const DIRECT_BACKEND_URL = isLocal 
   ? 'http://localhost:8000' 
-  : 'https://manak-setu-8no0.onrender.com';
+  : ''; 
 
 const PROXY_BACKEND_URL = '/api';
 /**
