@@ -63,7 +63,6 @@ app = FastAPI(title="BIS Multimodal RAG Assistant API")
 # Enable CORS for local PWA & Vite frontend (supports any local dev port e.g. 5173, 5174, 3000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$",
     allow_origins=[
         "http://localhost:5173",
         "http://127.0.0.1:5173",
