@@ -206,7 +206,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
                   required
                   value={productProfile.name}
                   onChange={(e) => updateProductProfile({ name: e.target.value })}
-                  placeholder="e.g. Electric Iron, Smartwatch, Cement"
+                  placeholder="e.g. Electric Iron, Electric Fan"
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
                 />
               </div>
@@ -222,11 +222,7 @@ export const HomeHero: React.FC<HomeHeroProps> = ({
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-slate-50 text-slate-900 text-xs sm:text-sm font-semibold focus:bg-white focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
                 >
                   <option value="Electrical & Electronics">Electrical & Electronics</option>
-                  <option value="Food & Agriculture">Food & Agriculture</option>
-                  <option value="Civil Engineering">Civil Engineering & Construction</option>
-                  <option value="Mechanical">Mechanical Engineering</option>
-                  <option value="Chemical">Chemicals & Polymers</option>
-                  <option value="Medical Equipment">Medical & Safety Equipment</option>
+        
                 </select>
               </div>
 

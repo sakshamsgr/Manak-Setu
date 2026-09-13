@@ -275,13 +275,20 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
     return 'bg-slate-100 text-slate-700 border-slate-200 font-semibold';
   };
 
-  const getMapsUrl = (lab: any) => {
-    if (lab.lat && lab.lng) {
-      return `https://www.google.com/maps/search/?api=1&query=${lab.lat},${lab.lng}`;
-    }
-    const queryParts = [lab.labName, lab.address, lab.city, lab.state, lab.pincode].filter(Boolean);
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(queryParts.join(', '))}`;
-  };
+ const getMapsUrl = (lab: any) => {
+  // 1. Gather all the text details (Name, Address, City, etc.)
+  const queryParts = [lab.labName, lab.address, lab.city, lab.state, lab.pincode].filter(Boolean);
+  const textQuery = queryParts.join(', ');
+
+  if (lab.lat && lab.lng) {
+    // 2. Combine Coordinates WITH the text query for maximum accuracy!
+    const combinedQuery = `${lab.lat},${lab.lng} ${textQuery}`;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(combinedQuery)}`;
+  }
+  
+  // 3. Fallback just in case a lab is missing coordinates in your database
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(textQuery)}`;
+};
 
   return (
     <div className="space-y-6 animate-fade-in relative">

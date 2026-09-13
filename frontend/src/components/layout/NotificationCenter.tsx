@@ -226,7 +226,7 @@ export const NotificationCenter: React.FC = () => {
 
           {/* Filter Pills (if multiple types exist) */}
           {availableTypes.length > 1 && (
-            <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
+            <div className="px-3 py-5 bg-slate-50 border-b border-slate-200 flex items-center gap-1.5 overflow-x-auto custom-scrollbar">
               <button
                 onClick={() => setSelectedTypeFilter('all')}
                 className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${

@@ -5,9 +5,15 @@ import { RawBackendResponse, ChatNormalizedResponse, Citation } from '../types/c
  * Defaults to direct FastAPI local backend URL http://127.0.0.1:8000
  * Falls back to /api or Vite proxy if direct cross-origin is restricted.
  */
-const DIRECT_BACKEND_URL = 'http://localhost:8000';
-const PROXY_BACKEND_URL = '/api';
+// 1. Automatically detect if the site is running on your local computer
+const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
+// 2. Dynamically set the URL: Localhost stays local, Vercel talks to Render
+const DIRECT_BACKEND_URL = isLocal 
+  ? 'http://localhost:8000' 
+  : 'https://manak-setu-8no0.onrender.com';
+
+const PROXY_BACKEND_URL = '/api';
 /**
  * Determine best available API endpoint URL
  */
@@ -58,7 +64,7 @@ export function normalizeChatResponse(data: RawBackendResponse): ChatNormalizedR
 /**
  * Global 10-Second API Timeout specification (Plan Section 8)
  */
-export const API_TIMEOUT_MS = 10000;
+export const API_TIMEOUT_MS = 15000;
 
 export class ApiTimeoutError extends Error {
   isTimeout: boolean;
