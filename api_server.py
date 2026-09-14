@@ -25,6 +25,8 @@ import jwt
 from datetime import datetime, timedelta, timezone
 import hashlib
 import io
+import urllib.request
+import urllib.error
 
 try:
     import fitz  # PyMuPDF
@@ -538,27 +540,34 @@ def send_secure_otp(email: str, purpose: str):
         cursor.close()
         conn.close()
 
-    sender_email = os.getenv("SMTP_USERNAME")
-    sender_password = os.getenv("SMTP_PASSWORD")
+    brevo_api_key = os.getenv("BREVO_API_KEY")
+    sender_email = os.getenv("SMTP_USERNAME") # The Gmail you verified on Brevo
     
-    if not sender_email or not sender_password:
-        print(f"🔥 EMERGENCY BACKUP (Missing Credentials): The OTP for {clean_email} is: {otp_code}")
+    if not brevo_api_key or not sender_email:
+        print("Error: Missing Brevo API credentials.")
         return
 
-    msg = MIMEText(f"Your Manak Setu verification code is: {otp_code}\n\nThis code will expire in 5 minutes.")
-    msg['Subject'] = 'Manak Setu Security Code'
-    msg['From'] = os.getenv("SMTP_FROM_EMAIL", sender_email)
-    msg['To'] = clean_email
+    # Use Brevo REST API over HTTPS (Port 443 - Never blocked by Render!)
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "accept": "application/json",
+        "api-key": brevo_api_key,
+        "content-type": "application/json"
+    }
+    payload = {
+        "sender": {"email": sender_email, "name": "Manak Setu App"},
+        "to": [{"email": clean_email}],
+        "subject": "Manak Setu Security Code",
+        "htmlContent": f"<h3>Your verification code is: <strong>{otp_code}</strong></h3><p>This code will expire in 5 minutes.</p>"
+    }
 
+    req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers=headers, method='POST')
+    
     try:
-        smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
-        smtp_port = int(os.getenv("SMTP_PORT", 465))
-        
-        # CRITICAL FIX: Added timeout=3 to prevent Vercel from throwing a 502 Bad Gateway!
-        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=3) as server:
-            server.login(sender_email, sender_password)
-            server.send_message(msg)
-            print(f"Successfully sent OTP to {clean_email}")
+        with urllib.request.urlopen(req, timeout=5) as response:
+            print(f"✅ Real OTP successfully delivered to {clean_email}!")
+    except urllib.error.URLError as e:
+        print(f"❌ Failed to send real email: {e}")
             
     except Exception as e:
         # HACKATHON SURVIVAL CODE:
