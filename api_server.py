@@ -540,7 +540,9 @@ def send_secure_otp(email: str, purpose: str):
 
     sender_email = os.getenv("SMTP_USERNAME")
     sender_password = os.getenv("SMTP_PASSWORD")
+    
     if not sender_email or not sender_password:
+        print(f"🔥 EMERGENCY BACKUP (Missing Credentials): The OTP for {clean_email} is: {otp_code}")
         return
 
     msg = MIMEText(f"Your Manak Setu verification code is: {otp_code}\n\nThis code will expire in 5 minutes.")
@@ -551,11 +553,18 @@ def send_secure_otp(email: str, purpose: str):
     try:
         smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
         smtp_port = int(os.getenv("SMTP_PORT", 465))
-        with smtplib.SMTP_SSL(smtp_host, smtp_port) as server:
+        
+        # CRITICAL FIX: Added timeout=3 to prevent Vercel from throwing a 502 Bad Gateway!
+        with smtplib.SMTP_SSL(smtp_host, smtp_port, timeout=3) as server:
             server.login(sender_email, sender_password)
             server.send_message(msg)
+            print(f"Successfully sent OTP to {clean_email}")
+            
     except Exception as e:
-        print(f"SMTP Email Error: {e}")
+        # HACKATHON SURVIVAL CODE:
+        # If Render blocks the port, catch it immediately, don't crash, and print the OTP for the judges!
+        print(f"⚠️ SMTP BLOCKED (or Timeout)! Error: {e}")
+        print(f"🔥 EMERGENCY BACKUP: The OTP for {clean_email} is: {otp_code}")
 
 @app.post("/auth/signup")
 async def signup(req: SignupRequest):
