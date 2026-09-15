@@ -7,7 +7,8 @@ import {
   Tag, 
   ChevronRight, 
   Layers,
-  GripHorizontal
+  GripHorizontal,
+  Maximize2 // NEW: Imported Maximize icon
 } from 'lucide-react';
 import { ChatMessage, ChatSession } from '../../types/chat';
 import { MessageList } from './MessageList';
@@ -47,6 +48,7 @@ interface PersistentAiAssistantProps {
   onRetry?: () => void;
   activeSession?: ChatSession;
   contextData?: PersistentAssistantContext;
+  onMaximize?: () => void; // NEW: Prop for handoff to full-screen
 }
 
 // Default desktop dimensions (sm:w-[410px] sm:h-[600px])
@@ -87,6 +89,7 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
   onRetry,
   activeSession,
   contextData,
+  onMaximize, // NEW: Destructured maximize handler
 }) => {
   const { t, language } = useLanguage();
 
@@ -732,6 +735,20 @@ export const PersistentAiAssistant: React.FC<PersistentAiAssistantProps> = ({
               >
                 <RotateCcw className="w-4 h-4" />
               </button>
+
+              {/* NEW MAXIMIZE BUTTON */}
+              {onMaximize && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onClick={onMaximize}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                  title="Maximize to full screen"
+                >
+                  <Maximize2 className="w-4 h-4" />
+                </button>
+              )}
 
               <button
                 type="button"

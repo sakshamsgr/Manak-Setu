@@ -2,34 +2,74 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatMessage } from '../../types/chat';
 import { MessageItem } from './MessageItem';
-import { ShieldCheck, ChevronDown, Sparkles, BookOpen, Loader2 } from 'lucide-react';
+import { ShieldCheck, ChevronDown, Loader2 } from 'lucide-react';
 
 interface MessageListProps {
   messages: ChatMessage[];
   isLoading: boolean;
   onRetry?: () => void;
+  onStartProductGuide?: (query: string) => void;
 }
 
-export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, onRetry }) => {
+export const MessageList: React.FC<MessageListProps> = ({ 
+  messages, 
+  isLoading, 
+  onRetry,
+  onStartProductGuide 
+}) => {
   const { t } = useTranslation();
   const bottomRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  
   const [showScrollBottom, setShowScrollBottom] = useState(false);
+  const [isAutoScrolling, setIsAutoScrolling] = useState(true);
+  const lastProcessedMessageId = useRef<string | null>(null);
 
   const scrollToBottom = (smooth = true) => {
     bottomRef.current?.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto' });
   };
 
-  useEffect(() => {
-    scrollToBottom(true);
-  }, [messages, isLoading]);
-
   const handleScroll = () => {
     if (!containerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    // If the user manually scrolls up, turn off auto-scrolling
+    setIsAutoScrolling(isNearBottom);
     setShowScrollBottom(!isNearBottom);
   };
+
+  useEffect(() => {
+    // Always scroll to bottom when loading starts (to show the spinner)
+    if (isLoading) {
+      scrollToBottom(true);
+      return;
+    }
+
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+
+      // ISSUE 1 FIX: If a NEW AI message arrives, scroll to its TOP and disable auto-scrolling
+      if (lastMsg.role !== 'user' && lastMsg.id !== lastProcessedMessageId.current) {
+        const msgElement = document.getElementById(`msg-${lastMsg.id}`);
+        if (msgElement) {
+          msgElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          lastProcessedMessageId.current = lastMsg.id;
+          setIsAutoScrolling(false); // Let the user read from the top while it streams!
+        }
+      } 
+      // If the user sends a new message, force scroll to bottom
+      else if (lastMsg.role === 'user' && lastMsg.id !== lastProcessedMessageId.current) {
+        scrollToBottom(true);
+        lastProcessedMessageId.current = lastMsg.id;
+        setIsAutoScrolling(true);
+      }
+      // If the AI message is just streaming/updating, only auto-scroll if the user is already at the bottom
+      else if (isAutoScrolling) {
+        scrollToBottom(false);
+      }
+    }
+  }, [messages, isLoading, isAutoScrolling]);
 
   return (
     <div
@@ -39,11 +79,14 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, o
     >
       <div className="w-full space-y-3">
         {messages.map((message) => (
-          <MessageItem 
-            key={message.id} 
-            message={message} 
-            onRetry={onRetry} 
-          />
+          // Added an ID here so the scroll logic can target specific messages
+          <div id={`msg-${message.id}`} key={message.id}>
+            <MessageItem 
+              message={message} 
+              onRetry={onRetry} 
+              onStartProductGuide={onStartProductGuide} 
+            />
+          </div>
         ))}
 
         {/* Loading Indicator */}
@@ -55,7 +98,7 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, o
             <div className="bg-white border border-slate-200 rounded-2xl rounded-tl-none p-4 shadow-soft max-w-[80%] space-y-2">
               <div className="flex items-center gap-2 text-xs font-semibold text-bis-800">
                 <Loader2 className="w-4 h-4 animate-spin text-bis-600" />
-                <span>{t('common.loading') || 'Searching BIS Standards Repository & Regulatory Guidelines...'}</span>
+                <span>{t('common.loading') || 'Searching BIS Standards Repository...'}</span>
               </div>
               <div className="space-y-1.5 pt-1">
                 <div className="h-2.5 bg-slate-100 rounded-full w-4/5 animate-pulse"></div>
@@ -72,7 +115,10 @@ export const MessageList: React.FC<MessageListProps> = ({ messages, isLoading, o
       {/* Floating Scroll-to-Bottom Button */}
       {showScrollBottom && (
         <button
-          onClick={() => scrollToBottom(true)}
+          onClick={() => {
+            scrollToBottom(true);
+            setIsAutoScrolling(true);
+          }}
           className="fixed bottom-24 right-6 sm:right-10 p-2.5 rounded-full bg-bis-800 hover:bg-bis-700 active:bg-bis-900 text-white shadow-lg border border-bis-700 transition-all animate-fade-in z-20"
           aria-label="Scroll to bottom"
         >

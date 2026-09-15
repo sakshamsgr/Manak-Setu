@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Package, 
   BookOpen, 
@@ -17,11 +17,10 @@ import {
   Check,
   Loader2
 } from 'lucide-react';
-import { useState } from 'react';
 import { useProductContext } from '../../context/ProductContext';
 import { Step1Product } from './Step1Product';
 import { Step2Standard } from './Step2Standard';
-import { Step3Certification } from './Step3Certification';
+// Note: Step3Certification import has been removed because it is now merged into Step2!
 import { Step4Testing } from './Step4Testing';
 import { Step5Documents } from './Step5Documents';
 import { Step6Application } from './Step6Application';
@@ -52,28 +51,31 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
 
-  // FIX: Immediately skip Step 1 upon entering the guide, because we filled it on the Home page.
-  // This preserves Step 1 in the navigation bar but avoids showing it twice in a row.
+  // Immediately skip Step 1 upon entering the guide, because we filled it on the Home page.
   useEffect(() => {
     if (activeStep === 1) {
       setActiveStep(2);
     }
-    // We strictly only want this to run once when the guide completely mounts
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // NEW FIX: Auto-scroll to the top of the window whenever the step changes!
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [activeStep]);
+
   if (!guideData) return null;
 
-  // STRICT ZERO-HALLUCINATION GUARD: Check if the parser returned our "Not Found" fallback state
+  // STRICT ZERO-HALLUCINATION GUARD
   const isNotFound = guideData.standardDetails.code === 'Data Not Available';
 
+  // FIX: Updated to 5 Steps! (Step 2 and 3 are now merged)
   const steps = [
     { id: 1, label: t('productGuide.step1') || 'Product Profile', icon: <Package className="w-4 h-4" /> },
-    { id: 2, label: t('productGuide.step2') || 'Applicable Standard', icon: <BookOpen className="w-4 h-4" /> },
-    { id: 3, label: t('productGuide.step3') || 'Certification Scheme & QCO', icon: <ShieldCheck className="w-4 h-4" /> },
-    { id: 4, label: t('productGuide.step4') || 'Testing & Labs', icon: <FlaskConical className="w-4 h-4" /> },
-    { id: 5, label: t('productGuide.step5') || 'Documents Checklist', icon: <FileText className="w-4 h-4" /> },
-    { id: 6, label: t('productGuide.step6') || 'Application Process', icon: <FileCheck2 className="w-4 h-4" /> },
+    { id: 2, label: 'Standards & QCO', icon: <ShieldCheck className="w-4 h-4" /> },
+    { id: 3, label: 'Testing & Labs', icon: <FlaskConical className="w-4 h-4" /> },
+    { id: 4, label: 'Documents Checklist', icon: <FileText className="w-4 h-4" /> },
+    { id: 5, label: 'Application Process', icon: <FileCheck2 className="w-4 h-4" /> },
   ];
 
   const currentStepObj = steps.find((s) => s.id === activeStep) || steps[0];
@@ -82,10 +84,9 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
     switch (step) {
       case 1: return 'section-product-profile';
       case 2: return 'section-applicable-standard';
-      case 3: return 'section-certification-qco';
-      case 4: return 'section-testing-labs';
-      case 5: return 'section-documents';
-      case 6: return 'section-application';
+      case 3: return 'section-testing-labs';
+      case 4: return 'section-documents';
+      case 5: return 'section-application';
       default: return 'section-product-guide-flow';
     }
   };
@@ -137,7 +138,7 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Small 'i' Information Guide Button (Phase 13) */}
+          {/* Small 'i' Information Guide Button */}
           <PageInfoButton
             sectionId={getStepSectionId(activeStep)}
             tooltip={`Open Compliance Guide for Stage ${activeStep}: ${currentStepObj.label}`}
@@ -197,10 +198,11 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
         </div>
       </div>
 
-      {/* Conditionally Render Stepper Header (Hide if Not Found) */}
+     {/* Conditionally Render Stepper Header (Hide if Not Found) */}
       {!isNotFound && (
-        <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
+        <>
+          {/* STATIC PART: The Title and Subtitle stay here and scroll normally */}
+          <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200 shadow-sm flex items-center justify-between">
             <div>
               <h1 className="text-base sm:text-lg font-extrabold text-slate-900">
                 {t('productGuide.title') || 'Product Certification Roadmap'}
@@ -209,37 +211,40 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
                 {t('productGuide.subtitle') || 'Compliance guide for'} <strong className="text-slate-800">{productProfile.name || 'Product'}</strong>
               </p>
             </div>
+            {/* FIX: Changed to 5 steps */}
             <span className="text-xs font-bold px-3 py-1 bg-bis-50 text-bis-800 border border-bis-200 rounded-full">
-              Step {activeStep} of 6
+              Step {activeStep} of 5
             </span>
           </div>
 
-          {/* Stepper Progress Bar */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2 pt-2 border-t border-slate-100">
-            {steps.map((step) => {
-              const isCurrent = step.id === activeStep;
-              const isPast = step.id < activeStep;
-              return (
-                <button
-                  key={step.id}
-                  onClick={() => setActiveStep(step.id)}
-                  className={`flex items-center gap-2 p-2 rounded-xl text-left transition-all ${
-                    isCurrent
-                      ? 'bg-bis-900 text-white font-bold shadow-xs'
-                      : isPast
-                      ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                      : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
-                  }`}
-                >
-                  <div className={`p-1.5 rounded-lg ${isCurrent ? 'bg-bis-800 text-amber-400' : isPast ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
-                    {isPast ? <CheckCircle2 className="w-3.5 h-3.5" /> : step.icon}
-                  </div>
-                  <span className="text-[11px] truncate">{step.label}</span>
-                </button>
-              );
-            })}
+          {/* 🌟 STICKY PART: Added !mt-2 to forcefully override the parent container's gap! 🌟 */}
+          <div className="!mt-2 sticky top-[130px] z-50 bg-white shadow-lg rounded-2xl p-2 sm:p-3 border border-slate-200 transition-all">
+            <div className=" grid grid-cols-2 sm:grid-cols-5 gap-2">
+              {steps.map((step) => {
+                const isCurrent = step.id === activeStep;
+                const isPast = step.id < activeStep;
+                return (
+                  <button
+                    key={step.id}
+                    onClick={() => setActiveStep(step.id)}
+                    className={`flex items-center gap-2 p-2 rounded-xl text-left transition-all cursor-pointer ${
+                      isCurrent
+                        ? 'bg-bis-900 text-white font-bold shadow-xs'
+                        : isPast
+                        ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                        : 'bg-slate-50 text-slate-400 hover:bg-slate-100'
+                    }`}
+                  >
+                    <div className={`p-1.5 rounded-lg ${isCurrent ? 'bg-bis-800 text-amber-400' : isPast ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-500'}`}>
+                      {isPast ? <CheckCircle2 className="w-3.5 h-3.5" /> : step.icon}
+                    </div>
+                    <span className="text-[11px] truncate">{step.label}</span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {/* Main Roadmap Step Container */}
@@ -271,14 +276,14 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
             <div className="pt-2 flex justify-center gap-3">
               <button
                 onClick={resetJourney}
-                className="px-6 py-2.5 bg-bis-900 hover:bg-bis-800 text-white rounded-xl text-xs font-bold shadow-md transition-all"
+                className="px-6 py-2.5 bg-bis-900 hover:bg-bis-800 text-white rounded-xl text-xs font-bold shadow-md transition-all cursor-pointer"
               >
                 Try Another Search Query
               </button>
               {onOpenAssistant && (
                 <button
                   onClick={() => onOpenAssistant(`Is there any Indian Standard applicable for ${productProfile.name}?`)}
-                  className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-bis-950 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2"
+                  className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-bis-950 rounded-xl text-xs font-bold shadow-md transition-all flex items-center gap-2 cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4" />
                   <span>Ask AI Assistant Directly</span>
@@ -288,6 +293,7 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
           </div>
         ) : (
           <>
+            {/* FIX: Render steps 1 through 5, skipping the old step 3 */}
             {activeStep === 1 && (
               <Step1Product
                 productProfile={productProfile}
@@ -300,45 +306,37 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
               <Step2Standard
                 productName={productProfile.name}
                 standardDetails={guideData.standardDetails}
+                certificationDetails={guideData.certificationDetails} // FIXED: Passed the missing prop
                 citations={guideData.citations}
-                onNext={() => setActiveStep(3)}
+                onNext={() => setActiveStep(3)} // Goes to Testing & Labs
                 onPrev={() => setActiveStep(1)}
                 onAskAI={handleStepAskAI}
               />
             )}
             {activeStep === 3 && (
-              <Step3Certification
+              <Step4Testing // Now mapped to Step 3
                 productName={productProfile.name}
-                certificationDetails={guideData.certificationDetails}
-                onNext={() => setActiveStep(4)}
-                onPrev={() => setActiveStep(2)}
+                standardDetails={guideData.standardDetails}
+                testingDetails={guideData.testingDetails}
+                onNext={() => setActiveStep(4)} // Goes to Documents
+                onPrev={() => setActiveStep(2)} // Goes back to Merged Step 2
                 onAskAI={handleStepAskAI}
               />
             )}
             {activeStep === 4 && (
-              <Step4Testing
+              <Step5Documents // Now mapped to Step 4
                 productName={productProfile.name}
-                standardDetails={guideData.standardDetails}
-                testingDetails={guideData.testingDetails}
-                onNext={() => setActiveStep(5)}
-                onPrev={() => setActiveStep(3)}
+                documents={guideData.documentChecklist}
+                onNext={() => setActiveStep(5)} // Goes to Application
+                onPrev={() => setActiveStep(3)} // Goes back to Testing & Labs
                 onAskAI={handleStepAskAI}
               />
             )}
             {activeStep === 5 && (
-              <Step5Documents
-                productName={productProfile.name}
-                documents={guideData.documentChecklist}
-                onNext={() => setActiveStep(6)}
-                onPrev={() => setActiveStep(4)}
-                onAskAI={handleStepAskAI}
-              />
-            )}
-            {activeStep === 6 && (
-              <Step6Application
+              <Step6Application // Now mapped to Step 5
                 productName={productProfile.name}
                 milestones={guideData.applicationMilestones}
-                onPrev={() => setActiveStep(5)}
+                onPrev={() => setActiveStep(4)} // Goes back to Documents
                 onRestart={resetJourney}
                 onAskAI={handleStepAskAI}
               />

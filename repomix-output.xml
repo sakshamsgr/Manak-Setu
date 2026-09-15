@@ -1686,7 +1686,7 @@ export const translations = {
     navConsumer: 'Consumer Help',
 
     // Home Hero
-    heroBadge: 'National Standards Compliance Gateway • SIH 2026',
+    heroBadge: 'National Standards Copliance Gateway • SIH 2026',
     heroTitlePrefix: 'Your Guide to',
     heroTitleStandards: 'BIS Standards',
     heroTitleAnd: '&',

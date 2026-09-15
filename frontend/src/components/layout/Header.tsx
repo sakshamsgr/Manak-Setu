@@ -13,7 +13,8 @@ import {
   Calculator,
   UserCheck,
   Gem,
-  GitMerge
+  GitMerge,
+  Sparkles
 } from 'lucide-react';
 import { checkBackendHealth } from '../../services/api';
 import { useLanguage } from '../../context/LanguageContext';
@@ -22,6 +23,7 @@ import { NotificationCenter } from './NotificationCenter';
 
 export type MainNavTab = 
   | 'home' 
+  | 'ask-ai'
   | 'estimator' 
   | 'consumer'
   | 'hallmarking'
@@ -63,8 +65,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   const navItems: Array<{ id: MainNavTab; label: string; icon: React.ReactNode; badge?: string }> = [
     { id: 'home', label: t('nav.home') || 'Product Guide', icon: <Compass className="w-4 h-4" /> },
+    { id: 'ask-ai', label: t('Ask AI') || 'Ask Manak Setu AI', icon: <Sparkles className="w-4 h-4"/>, },
     { id: 'hallmarking', label: t('nav.hallmarking') || 'Hallmarking', icon: <Gem className="w-4 h-4" /> },
-    { id: 'estimator', label: t('nav.estimator') || 'Fee Estimator', icon: <Calculator className="w-4 h-4" />, badge: 'MSME' },
+    { id: 'estimator', label: t('nav.estimator') || 'Fee Estimator', icon: <Calculator className="w-4 h-4" />},
     { id: 'consumer', label: t('nav.consumer') || 'Consumer Help', icon: <UserCheck className="w-4 h-4" /> },
     { id: 'info', label: t('nav.info') || 'Info / Guide', icon: <BookOpen className="w-4 h-4" /> },
   ];
@@ -152,7 +155,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Real BIS Regulatory Notifications Center */}
           <NotificationCenter />
 
-          {/* PROFILE DROPDOWN (Integrated directly into the flex container) */}
+          {/* PROFILE DROPDOWN */}
           <ProfileDropdown />
 
           {/* Mobile Menu Hamburger */}
@@ -169,14 +172,14 @@ export const Header: React.FC<HeaderProps> = ({
       {/* Desktop Unified Navigation Strip */}
       <div className="hidden lg:block bg-bis-900 text-white border-t border-bis-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between overflow-x-auto custom-scrollbar">
-          <div className="flex items-center gap-10 sm:gap-16">
+          <div className="flex items-center gap-6 xl:gap-10">
             {navItems.map((item) => {
               const isActive = activeTab === item.id;
               return (
                 <button
                   key={item.id}
                   onClick={() => handleTabClick(item.id)}
-                  className={`flex items-center gap-2 px-5 py-2.5 text-xs font-bold tracking-wide transition-all border-b-2 whitespace-nowrap ${
+                  className={`flex items-center gap-2 px-4 xl:px-5 py-2.5 text-xs font-bold tracking-wide transition-all border-b-2 whitespace-nowrap ${
                     isActive
                       ? 'border-amber-400 text-white bg-bis-800/90 shadow-inner'
                       : 'border-transparent text-slate-200 hover:text-white hover:bg-bis-800/50'

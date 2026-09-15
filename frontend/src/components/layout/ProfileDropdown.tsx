@@ -1,11 +1,33 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { UserCircle, LogOut, Mail, User, Calendar } from 'lucide-react';
+import { UserCircle, LogOut, Mail, User, Moon, Sun } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const ProfileDropdown: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const { user, logout } = useAuth();
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Theme State (Defaulting strictly to 'light')
+  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('theme') as 'light' | 'dark') || 'light';
+    }
+    return 'light';
+  });
+
+  // Apply the theme directly to the HTML document root for Tailwind
+  useEffect(() => {
+    if (theme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+    localStorage.setItem('theme', theme);
+  }, [theme]);
+
+  const toggleTheme = () => {
+    setTheme(prev => (prev === 'light' ? 'dark' : 'light'));
+  };
 
   // Close dropdown if user clicks anywhere outside of it
   useEffect(() => {
@@ -49,15 +71,15 @@ export const ProfileDropdown: React.FC = () => {
                 <span className="text-sm font-medium truncate">{user?.email}</span>
               </div>
             </div>
-          
           </div>
 
           {/* Sign Out Button at the bottom */}
           <button 
             onClick={logout}
-            className="w-full p-4 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-2 transition-colors"
+            className="w-full p-4 text-left text-sm font-bold text-rose-600 hover:bg-rose-50 flex items-center gap-3 transition-colors cursor-pointer"
           >
-            <LogOut className="w-5 h-5" /> Sign Out
+            <LogOut className="w-5 h-5" /> 
+            <span>Sign Out</span>
           </button>
         </div>
       )}

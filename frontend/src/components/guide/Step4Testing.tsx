@@ -290,6 +290,27 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(textQuery)}`;
 };
 
+  // =========================================================================================
+  // FIX: Smart Tab Navigation (Cycles through Tests -> Labs -> Grouping, then to next step)
+  // =========================================================================================
+  const handleSmartContinue = () => {
+    if (activeTab === 'tests') {
+      setActiveTab('labs');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else if (activeTab === 'labs') {
+      setActiveTab('grouping');
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      onNext(); // Proceed to Documents Step
+    }
+  };
+
+  // Determine button text based on active tab
+  let nextBtnText = "Continue to Documents";
+  if (activeTab === 'tests') nextBtnText = "Next: View Recognized Labs";
+  if (activeTab === 'labs') nextBtnText = "Next: View Grouping Rules";
+
+
   return (
     <div className="space-y-6 animate-fade-in relative">
       {/* Location Modal */}
@@ -396,10 +417,10 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase bg-bis-100 text-bis-900 rounded">
-            Stage 4 of 6
+            Stage 3 of 5
           </span>
           <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
-            Step 4: Testing & Laboratories
+            Testing & Laboratories
           </h2>
           <p className="text-xs sm:text-sm text-slate-500">
             Find the tests required for your product and suitable BIS-recognized laboratories.
@@ -496,10 +517,10 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
       </div>
 
       {/* ============================================================ */}
-      {/* TAB 1: REQUIRED TESTS (Clean Table as Main Focus)             */}
+      {/* TAB 1: REQUIRED TESTS (Clean Table as Main Focus)            */}
       {/* ============================================================ */}
       {activeTab === 'tests' && (
-        <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-5">
+        <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-5 animate-fade-in">
           {/* Header & Subtitle */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-slate-100">
             <div>
@@ -796,7 +817,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
       {/* TAB 2: RECOGNIZED LABORATORIES                               */}
       {/* ============================================================ */}
       {activeTab === 'labs' && (
-        <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
+        <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4 animate-fade-in">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-900">
               <Building2 className="w-4 h-4 text-indigo-600" />
@@ -1029,7 +1050,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
       {/* TAB 3: GROUPING & SAMPLING RULES                             */}
       {/* ============================================================ */}
       {activeTab === 'grouping' && (
-        <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
+        <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4 animate-fade-in">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-wider text-slate-900">
               <Gauge className="w-4 h-4 text-amber-600" />
@@ -1160,10 +1181,10 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
         </button>
 
         <button
-          onClick={onNext}
+          onClick={handleSmartContinue}
           className="px-6 py-3 rounded-xl bg-bis-900 hover:bg-bis-800 text-white font-bold text-xs sm:text-sm flex items-center gap-2 shadow-md transition-all transform active:scale-95 cursor-pointer"
         >
-          <span>{t('s4ContinueBtn') || 'Continue to Documents'}</span>
+          <span>{nextBtnText}</span>
           <ArrowRight className="w-4 h-4 text-amber-400" />
         </button>
       </div>

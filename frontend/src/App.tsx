@@ -18,11 +18,12 @@ import { InstallModal } from './components/layout/InstallModal';
 // Views
 import { HomeHero } from './components/home/HomeHero';
 import { ProductCertificationGuide } from './components/guide/ProductCertificationGuide';
-import { TrustStatsSection } from './components/home/TrustStatsSection';
+
 import { FeeEstimatorView } from './components/estimator/FeeEstimatorView';
 import { ConsumerHelpView } from './components/compliance/ConsumerHelpView';
 import { HallmarkingView } from './components/hallmarking/HallmarkingView';
 import { InfoGuideView } from './components/info/InfoGuideView';
+import { AskManakSetuView } from './components/chat/AskManakSetuView';
 
 // Hooks & Assistant
 import { useChat } from './hooks/useChat';
@@ -32,16 +33,19 @@ import { PersistentAiAssistant, PersistentAssistantContext } from './components/
 const getInitialTab = (): MainNavTab => {
   if (typeof window === 'undefined') return 'home';
   const hash = window.location.hash.replace('#', '').toLowerCase();
-  if (hash.startsWith('info') || hash === 'hallmarking' || hash === 'estimator' || hash === 'consumer' || hash === 'home') {
+  
+  if (hash.startsWith('info') || hash === 'hallmarking' || hash === 'estimator' || hash === 'consumer' || hash === 'home' || hash === 'ask-ai') {
     return (hash.startsWith('info') ? 'info' : hash) as MainNavTab;
   }
   const params = new URLSearchParams(window.location.search);
   const tabParam = params.get('tab')?.toLowerCase();
-  if (tabParam === 'hallmarking' || tabParam === 'estimator' || tabParam === 'consumer' || tabParam === 'home' || tabParam === 'info') {
+  
+  if (tabParam === 'hallmarking' || tabParam === 'estimator' || tabParam === 'consumer' || tabParam === 'home' || tabParam === 'info' || tabParam === 'ask-ai') {
     return tabParam as MainNavTab;
   }
   const saved = sessionStorage.getItem('bis_active_tab');
-  if (saved === 'hallmarking' || saved === 'estimator' || saved === 'consumer' || saved === 'home' || saved === 'info') {
+  
+  if (saved === 'hallmarking' || saved === 'estimator' || saved === 'consumer' || saved === 'home' || saved === 'info' || saved === 'ask-ai') {
     return saved as MainNavTab;
   }
   return 'home';
@@ -65,7 +69,8 @@ const AuthenticatedAppContent: React.FC = () => {
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '').toLowerCase();
-      if (hash.startsWith('info') || hash === 'hallmarking' || hash === 'estimator' || hash === 'consumer' || hash === 'home') {
+      
+      if (hash.startsWith('info') || hash === 'hallmarking' || hash === 'estimator' || hash === 'consumer' || hash === 'home' || hash === 'ask-ai') {
         const targetTab = (hash.startsWith('info') ? 'info' : hash) as MainNavTab;
         setActiveTabState(targetTab);
         try {
@@ -162,7 +167,9 @@ const AuthenticatedAppContent: React.FC = () => {
         onInstallClick={triggerInstall}
       />
 
-      <main className="flex-1 flex flex-col min-w-0">
+      {/* Main Container dynamically adjusted for Full-screen Gemini view */}
+      <main className={`flex-1 flex flex-col min-w-0 ${activeTab === 'ask-ai' ? 'h-[calc(100vh-80px)] overflow-hidden' : ''}`}>
+        
         {activeTab === 'home' && (
           <div className="flex-1 flex flex-col space-y-8">
             {guideData ? (
@@ -175,33 +182,62 @@ const AuthenticatedAppContent: React.FC = () => {
             ) : (
               <>
                 <HomeHero onSubmitQuery={handleHeroSubmit} onSelectNavTab={setActiveTab} isLoading={isJourneyLoading} />
-                <TrustStatsSection />
+              
               </>
             )}
           </div>
         )}
+        
+        {/* Ask Manak Setu View now receives full session control */}
+        {activeTab === 'ask-ai' && (
+          <AskManakSetuView
+            messages={messages}
+            sessions={sessions}
+            activeSessionId={activeSessionId}
+            setActiveSessionId={setActiveSessionId}
+            createNewSession={createNewSession}
+            deleteSession={deleteSession}
+            isLoading={isChatLoading}
+            onSendMessage={sendChatMessage}
+            onSendAttachment={sendChatAttachment}
+            onClearChat={clearCurrentMessages}
+            onRetry={retryLastMessage}
+            contextData={assistantContext}
+            onStartProductGuide={(query) => {
+              setActiveTab('home');
+              startJourney(query);
+            }}
+          />
+        )}
+
         {activeTab === 'estimator' && <FeeEstimatorView onAskAIAboutEstimate={handleStartChatPrompt} />}
         {activeTab === 'consumer' && <ConsumerHelpView onNavigateToHallmarking={() => setActiveTab('hallmarking')} />}
         {activeTab === 'hallmarking' && <HallmarkingView onOpenAssistant={handleStartChatPrompt} />}
         {activeTab === 'info' && <InfoGuideView onOpenAssistant={handleStartChatPrompt} onSelectNavTab={setActiveTab} />}
       </main>
 
-      <Footer />
+      {/* Hide footer dynamically if Ask AI is active to maximize chat space */}
+      {activeTab !== 'ask-ai' && <Footer />}
       
-      {/* Persistent AI Assistant Drawer & Floating Control */}
-      <PersistentAiAssistant
-        isOpen={isAssistantOpen}
-        onToggle={() => setIsAssistantOpen((prev) => !prev)}
-        onClose={() => setIsAssistantOpen(false)}
-        messages={messages}
-        isLoading={isChatLoading}
-        onSendMessage={sendChatMessage}
-        onSendAttachment={sendChatAttachment}
-        onClearChat={clearCurrentMessages}
-        onRetry={retryLastMessage}
-        activeSession={activeSession}
-        contextData={assistantContext}
-      />
+      {activeTab === 'home' && guideData && activeStep >= 1 && activeStep <= 6 && (
+        <PersistentAiAssistant
+          isOpen={isAssistantOpen}
+          onToggle={() => setIsAssistantOpen((prev) => !prev)}
+          onClose={() => setIsAssistantOpen(false)}
+          messages={messages}
+          isLoading={isChatLoading}
+          onSendMessage={sendChatMessage}
+          onSendAttachment={sendChatAttachment}
+          onClearChat={clearCurrentMessages}
+          onRetry={retryLastMessage}
+          activeSession={activeSession}
+          contextData={assistantContext}
+          onMaximize={() => {
+            setIsAssistantOpen(false);
+            setActiveTab('ask-ai');
+          }}
+        />
+      )}
 
       <InstallModal 
         isOpen={showInstallModal} 

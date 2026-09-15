@@ -45,7 +45,7 @@ export const Step5Documents: React.FC<Step5DocumentsProps> = ({
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-1">
           <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase bg-bis-100 text-bis-900 rounded">
-            Stage 5 of 6
+            Stage 4 of 5
           </span>
           <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
             {t('s5Title')}
