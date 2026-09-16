@@ -6,19 +6,10 @@ import {
   ArrowRight, 
   CheckCircle2, 
   ShieldAlert, 
-  Building2, 
-  Percent, 
-  Coins, 
-  IndianRupee, 
-  Layers, 
-  FileCheck, 
   Info,
   Loader2,
   RefreshCw,
-  Search,
   Globe,
-  ExternalLink,
-  DollarSign,
   AlertCircle
 } from 'lucide-react';
 import { IndustryScale, DatabaseFeeCalculationResponse } from '../../types/estimator';
@@ -26,40 +17,25 @@ import { PageInfoButton } from '../common/PageInfoButton';
 import { useLanguage } from '../../context/LanguageContext';
 import { useProductContext } from '../../context/ProductContext';
 import { calculateFeeEstimate, getStandardsOptions } from '../../services/api';
+import { SearchableStandardSelector, StandardOption } from './SearchableStandardSelector';
 
 interface FeeEstimatorViewProps {
   onAskAIAboutEstimate?: (prompt: string) => void;
 }
 
-interface StandardOption {
-  id: string;
-  code: string;
-  title: string;
-}
-
-const FALLBACK_STANDARDS: StandardOption[] = [
-  { id: '368-2014-electric-immersion-water-heaters', code: 'IS 368:2014', title: 'Electric Immersion Water Heaters' },
-  { id: '302-2-3_electric_irons_product_manual_PM-IS_302-Part2-Sec3-IEC60335-2-3-2_Oct2024', code: 'IS 302-2-3', title: 'Electric Irons (Safety Requirements)' },
-  { id: '302-2-30_room_heaters_product_manual_PM-IS_302-2-30-4_Dec2023', code: 'IS 302-2-30', title: 'Room Heaters (Safety Requirements)' },
-  { id: '302-2-80_fans_product_manual_PM-IS_302-Part2-Sec80-4_July2026', code: 'IS 302-2-80', title: 'Electric Fans (Safety Requirements)' },
-  { id: '302-2-7_domestic_electric_clothes_washing_machines_product_manual_PM-IS_302-Part2-Sec7-4_June2025', code: 'IS 302-2-7', title: 'Electric Clothes Washing Machines' },
-  { id: '302-2-14_electric_kitchen_machines_product_manual_PM-IS_302-2-14-5_June2025', code: 'IS 302-2-14', title: 'Electric Kitchen Machines' },
-  { id: '302-2-6_cooking_ranges_hobs_ovens_product_manual_PM-IS_302-2-6-1_Jan2023', code: 'IS 302-2-6', title: 'Cooking Ranges, Hobs and Ovens' },
-  { id: '302-2-35_instantaneous_water_heater_product_manual_PM-IS_302-2-35-1_Jan2023', code: 'IS 302-2-35', title: 'Instantaneous Water Heaters' },
-  { id: '302-2-11_tumbler_dryers_product_manual_PM-IS_302-2-11-1_Feb2024', code: 'IS 302-2-11', title: 'Tumbler Dryers' },
-  { id: '302-2-202_electric_stoves_product_manual_PM-IS_302-2-202-1_Jan2024', code: 'IS 302-2-202', title: 'Electric Stoves and Hotplates' },
-];
+// StandardOption is imported from SearchableStandardSelector
 
 export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAboutEstimate }) => {
   const { t } = useLanguage();
   const { productProfile, guideData } = useProductContext();
 
-  // Standards options loaded from backend
-  const [standardOptions, setStandardOptions] = useState<StandardOption[]>(FALLBACK_STANDARDS);
-  const [standardSearchFilter, setStandardSearchFilter] = useState('');
+  // Standards options loaded from backend — no hardcoded fallback
+  const [standardOptions, setStandardOptions] = useState<StandardOption[]>([]);
+  const [standardsLoading, setStandardsLoading] = useState<boolean>(true);
+  const [standardsError, setStandardsError] = useState<string | null>(null);
 
   // Form State
-  const [selectedStandardId, setSelectedStandardId] = useState<string>('368-2014-electric-immersion-water-heaters');
+  const [selectedStandardId, setSelectedStandardId] = useState<string>('');
   const [industryScale, setIndustryScale] = useState<IndustryScale>('micro');
   const [productCount, setProductCount] = useState<number>(1);
   const [inspectionDays, setInspectionDays] = useState<number>(2);
@@ -68,22 +44,37 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
 
   // Calculation & State
   const [result, setResult] = useState<DatabaseFeeCalculationResponse | null>(null);
+  const [feeUnavailableInfo, setFeeUnavailableInfo] = useState<{ code: string; message: string } | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Load available standards options from backend on mount
+  // Load available standards options from backend on mount — no hardcoded fallback
   useEffect(() => {
     let isMounted = true;
     const loadStandards = async () => {
+      setStandardsLoading(true);
+      setStandardsError(null);
       try {
         const data = await getStandardsOptions();
-        if (isMounted && data?.options && data.options.length > 0) {
+        if (!isMounted) return;
+        if (data?.options && data.options.length > 0) {
           setStandardOptions(data.options);
+          // Auto-select the first standard returned by the database
+          setSelectedStandardId((prev) => prev || data.options[0].id);
+        } else {
+          setStandardsError('No BIS standards were returned by the database. Please check the backend connection.');
         }
-      } catch (err) {
-        // Fallback to FALLBACK_STANDARDS silently
+      } catch (err: any) {
+        if (!isMounted) return;
+        setStandardsError(
+          err?.message?.includes('fetch') || err?.message?.includes('network')
+            ? 'Cannot connect to the backend. Please ensure the FastAPI server is running at http://127.0.0.1:8000.'
+            : `Unable to load BIS standards: ${err?.message || 'Unknown error'}. Please check the database connection.`
+        );
+      } finally {
+        if (isMounted) setStandardsLoading(false);
       }
     };
     loadStandards();
@@ -124,14 +115,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
     };
   }, []);
 
-  // Filtered standards for dropdown
-  const filteredStandards = useMemo(() => {
-    if (!standardSearchFilter.trim()) return standardOptions;
-    const q = standardSearchFilter.toLowerCase();
-    return standardOptions.filter(
-      (opt) => opt.code.toLowerCase().includes(q) || opt.title.toLowerCase().includes(q)
-    );
-  }, [standardOptions, standardSearchFilter]);
+  // (Filtering is now handled inside SearchableStandardSelector)
 
   // Current selected standard object
   const currentStandard = useMemo(() => {
@@ -151,9 +135,10 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
 
     setIsLoading(true);
     setErrorMessage(null);
+    setFeeUnavailableInfo(null);
 
     try {
-      const data: DatabaseFeeCalculationResponse = await calculateFeeEstimate({
+      const data: any = await calculateFeeEstimate({
         standardId: selectedStandardId,
         scheme: isForeignManufacturer ? 'Scheme-I' : 'Scheme-I',
         industryScale: isForeignManufacturer ? 'large' : industryScale,
@@ -163,7 +148,16 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
         signal: controller.signal,
       });
 
-      setResult(data);
+      if (data && data.success === false) {
+        setResult(null);
+        setFeeUnavailableInfo({
+          code: data.code || 'FEE_DATA_UNAVAILABLE',
+          message: data.message || 'No verified fee records are available for this standard in the current database.'
+        });
+      } else {
+        setResult(data);
+        setFeeUnavailableInfo(null);
+      }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
       console.error('Fee calculation failed:', err);
@@ -241,7 +235,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
                 Active Product Context Linked:
               </div>
               <div className="text-xs text-emerald-700">
-                Product: <strong className="font-semibold text-emerald-950">{productProfile.name || 'Immersion Heater'}</strong> • Standard: <strong className="font-semibold text-emerald-950">{currentStandard?.code} ({currentStandard?.title})</strong>
+                Product: <strong className="font-semibold text-emerald-950">{productProfile?.name || currentStandard?.title || 'Selected Product'}</strong> • Standard: <strong className="font-semibold text-emerald-950">{currentStandard?.code} ({currentStandard?.title})</strong>
               </div>
             </div>
           </div>
@@ -257,55 +251,39 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
       {/* Interactive Form Card */}
       <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 sm:p-8 space-y-6 no-print">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* 1. Standard Selector */}
+          {/* 1. Standard Selector — database-driven searchable combobox */}
           <div className="space-y-1.5 md:col-span-2">
             <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center justify-between">
               <span>1. {t('estimator.selectStandard') || 'Applicable Indian Standard (IS Code)'}</span>
               <span className="text-[11px] font-normal text-slate-500">From BIS database catalog</span>
             </label>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="sm:col-span-2">
-                <select
-                  value={selectedStandardId}
-                  onChange={(e) => setSelectedStandardId(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
-                >
-                  {standardOptions.map((opt) => (
-                    <option key={opt.id} value={opt.id}>
-                      {opt.code} — {opt.title}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="relative">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="text"
-                  placeholder="Filter standards list..."
-                  value={standardSearchFilter}
-                  onChange={(e) => setStandardSearchFilter(e.target.value)}
-                  className="w-full pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
-                />
-              </div>
-            </div>
-            {standardSearchFilter && filteredStandards.length > 0 && (
-              <div className="p-2 bg-slate-50 border border-slate-200 rounded-xl max-h-36 overflow-y-auto space-y-1 text-xs">
-                {filteredStandards.map((item) => (
+            {standardsError ? (
+              <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-xs text-rose-800">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold mb-0.5">Failed to load BIS standards</div>
+                  <div>{standardsError}</div>
                   <button
-                    key={item.id}
-                    onClick={() => {
-                      setSelectedStandardId(item.id);
-                      setStandardSearchFilter('');
-                    }}
-                    className={`w-full text-left px-2.5 py-1.5 rounded-lg transition-colors flex items-center justify-between ${
-                      item.id === selectedStandardId ? 'bg-bis-800 text-white font-bold' : 'hover:bg-slate-200 text-slate-800'
-                    }`}
+                    onClick={() => window.location.reload()}
+                    className="mt-1.5 text-xs font-bold text-rose-700 underline hover:text-rose-900"
                   >
-                    <span><strong>{item.code}</strong>: {item.title}</span>
-                    <span className="text-[10px] opacity-80">Select</span>
+                    Retry
                   </button>
-                ))}
+                </div>
               </div>
+            ) : (
+              <SearchableStandardSelector
+                options={standardOptions}
+                selectedId={selectedStandardId}
+                onSelect={setSelectedStandardId}
+                isLoading={standardsLoading}
+                placeholder="🔍 Type to search BIS standard (e.g. IS 302, electric iron)..."
+              />
+            )}
+            {!standardsError && !standardsLoading && standardOptions.length > 0 && (
+              <p className="text-[11px] text-slate-500">
+                {standardOptions.length} Indian Standards loaded from BIS database. Type a code or product name to filter.
+              </p>
             )}
           </div>
 
@@ -421,6 +399,45 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
             <RefreshCw className="w-3.5 h-3.5" />
             <span>{t('common.retry') || 'Retry'}</span>
           </button>
+        </div>
+      )}
+
+      {/* Fee Data Unavailable State — Strictly Database Driven */}
+      {feeUnavailableInfo && !isLoading && (
+        <div className="bg-white rounded-3xl shadow-sm border border-amber-200 p-6 sm:p-8 space-y-4 animate-slide-up no-print">
+          <div className="flex items-start gap-3.5">
+            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-600 shrink-0">
+              <ShieldAlert className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-0.5 text-[10px] font-extrabold uppercase tracking-wider bg-amber-100 text-amber-800 rounded">
+                  Fee Data Unavailable
+                </span>
+                <span className="text-xs text-slate-500 font-mono">
+                  {currentStandard?.code}
+                </span>
+              </div>
+              <h2 className="text-base sm:text-lg font-extrabold text-slate-900">
+                No Verified Statutory Fee Records in Database
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                {feeUnavailableInfo.message || 'No verified fee records are available for this standard in the current database.'}
+              </p>
+            </div>
+          </div>
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-2">
+            <div className="font-bold text-slate-800 flex items-center gap-1.5">
+              <Info className="w-4 h-4 text-bis-600" />
+              Statutory Accuracy Guarantee
+            </div>
+            <p className="leading-relaxed">
+              Manak Setu strictly uses authoritative database records directly from official BIS gazette fee schedules. Because no statutory fee schedule has been catalogued in the database for <strong>{currentStandard?.code} ({currentStandard?.title})</strong>, no estimated or default costs are fabricated.
+            </p>
+            <p className="text-bis-800 font-semibold pt-1">
+              💡 Please select another standard from the dropdown above (e.g. <strong>IS 1391 (Part 2)</strong> Split AC, <strong>IS 368</strong> Immersion Heater, <strong>IS 302</strong> Electric Iron / Washing Machine) to view authoritative fee calculations.
+            </p>
+          </div>
         </div>
       )}
 

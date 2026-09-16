@@ -384,7 +384,7 @@ export async function calculateFeeEstimate(params: {
   signal?: AbortSignal;
 }): Promise<any> {
   const payload = {
-    standard_id: params.standardId || '368-2014-electric-immersion-water-heaters',
+    standard_id: params.standardId || '',
     scheme: params.scheme || 'Scheme-I',
     industry_scale: params.industryScale || 'micro',
     is_foreign: params.isForeign || false,

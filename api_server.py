@@ -161,42 +161,37 @@ def parse_standard_components(std_str: str) -> dict:
     
     s = std_str.strip()
     
-    # Check leading pattern like '302-2-80', '302-2-3', '302-1', '368-2014', '3024'
-    m_lead = re.match(r'^(?:is[-_\s]*)?(\d{2,5})(?:[-_](\d{1,2}))?(?:[-_](\d{1,3}))?(?:[-_a-zA-Z]|$)', s, re.IGNORECASE)
+    # 1. Look for part and sec written as Part X Sec Y or Part X
+    m_ps = re.search(r'part\s*[-_]?\s*(\d+)[^\d]*?sec(?:tion)?\s*[-_]?\s*(\d+)', s, re.IGNORECASE)
     base, part, sec = None, None, None
-    if m_lead:
-        base = m_lead.group(1)
-        p = m_lead.group(2)
-        sc = m_lead.group(3)
-        if p and len(p) <= 2 and int(p) in (1, 2, 3, 4, 5):
-            part = p
-            if sc and len(sc) <= 3:
+    if m_ps:
+        part = m_ps.group(1)
+        sec = m_ps.group(2)
+    else:
+        m_sec = re.search(r'sec(?:tion)?\s*[-_]?\s*(\d+)', s, re.IGNORECASE)
+        if m_sec:
+            sec = m_sec.group(1)
+        m_part = re.search(r'part\s*[-_]?\s*(\d+)', s, re.IGNORECASE)
+        if m_part:
+            part = m_part.group(1)
+
+    # 2. Check hyphenated pattern like 302-2-11 or 302-2-202 or 302-1
+    if not (part and sec):
+        m_hyphen = re.search(r'(?:IS\s*)?(\d{2,5})-(\d{1,2})(?:-(\d{1,3}))?', s, re.IGNORECASE)
+        if m_hyphen:
+            base = m_hyphen.group(1)
+            p = m_hyphen.group(2)
+            sc = m_hyphen.group(3)
+            if not part:
+                part = p
+            if sc and not sec:
                 sec = sc
 
-    # If part and sec not determined from leading numbers, parse text
-    if not (part and sec):
-        m_ps = re.search(r'part\s*[-_]?\s*(\d+)[^\d]*?sec(?:tion)?\s*[-_]?\s*(\d+)', s, re.IGNORECASE)
-        if m_ps:
-            part = m_ps.group(1)
-            sec = m_ps.group(2)
-        else:
-            m_sec = re.search(r'sec(?:tion)?\s*[-_]?\s*(\d+)', s, re.IGNORECASE)
-            if m_sec:
-                sec = m_sec.group(1)
-            m_part = re.search(r'part\s*[-_]?\s*(\d+)', s, re.IGNORECASE)
-            if m_part:
-                part = m_part.group(1)
-
+    # 3. Find base number if not yet found
     if not base:
         m_b = re.search(r'(?:(?:^|[^0-9])is\s*|^)(\d{2,5})', s, re.IGNORECASE)
         if m_b:
             base = m_b.group(1)
-
-    # Legacy BIS standard cross-walk (e.g. IS 366 -> IS 302-2-3 Electric Iron)
-    if base == '366':
-        base = '302'
-        part = '2'
-        sec = '3'
 
     if base and part and sec:
         canonical = f"{base}-part-{part}-sec-{sec}"
@@ -417,8 +412,24 @@ def _normalize_standard_info(std_id: str, raw_title: str) -> tuple[str, str]:
             core = m_gen.group(1).replace('-', ' ').replace('_', ' ')
             std_num = f"IS {core.upper()}"
         else:
-            core = sid.split('_')[0].replace('-', ' ')
-            std_num = core if core.upper().startswith("IS") else f"IS {core}"
+            # Handle IDs that start directly with a number (no 'is-' prefix)
+            # e.g. '1391-part-1_...', '2347_...', '302-2-11_...'
+            m_leading = re.match(r'^(\d{2,5})(?:[-_]part[-_]?(\d+))?(?:[-_]sec[-_]?(\d+))?', sid_l)
+            if m_leading:
+                base = m_leading.group(1)
+                part = m_leading.group(2)
+                sec = m_leading.group(3)
+                year_m = re.search(r'(19\d\d|20\d\d)', sid)
+                year_suffix = f":{year_m.group(1)}" if year_m and int(year_m.group(1)) > 2000 and int(year_m.group(1)) <= 2026 else ""
+                if part and sec:
+                    std_num = f"IS {base} (Part {part}/Sec {sec}){year_suffix}"
+                elif part:
+                    std_num = f"IS {base} (Part {part}){year_suffix}"
+                else:
+                    std_num = f"IS {base}{year_suffix}"
+            else:
+                core = sid.split('_')[0].replace('-', ' ')
+                std_num = core if core.upper().startswith("IS") else f"IS {core}"
 
     # Clean the title
     clean_title = raw_title or ""
@@ -2102,64 +2113,32 @@ async def _resolve_product_guide_core(req: ProductGuideResolveRequest, conn, cur
 
 @app.get("/api/standards/options")
 async def get_standards_options():
+    """
+    Return valid Indian Standards that have corresponding fee data in bis_fees.
+
+    Source of truth: authoritative 'standards' table inner joined with 'bis_fees'.
+    Only standards with at least one valid corresponding fee record in bis_fees are returned.
+    """
     conn = get_db()
     cur = conn.cursor()
     try:
         cur.execute("""
-            SELECT id, title FROM bis_standards 
-            WHERE id NOT ILIKE 'Guidance%' 
-              AND id NOT ILIKE 'Transition%' 
-              AND id NOT ILIKE '%AMENDMENT%'
-            ORDER BY id ASC;
+            SELECT DISTINCT s.id::text, s.standard_number, s.title
+            FROM standards s
+            INNER JOIN bis_fees f ON f.standard_id = s.id
+            WHERE s.standard_number IS NOT NULL AND s.title IS NOT NULL
+            ORDER BY s.standard_number ASC;
         """)
         rows = cur.fetchall()
     finally:
         cur.close()
         conn.close()
 
-    options = []
-    for r in rows:
-        sid, title = r[0], r[1]
-        if "368" in sid:
-            code = "IS 368:2014"
-            title = "Electric Immersion Water Heaters"
-        elif "302_2_3" in sid or "302-2-3" in sid:
-            code = "IS 302-2-3"
-            title = "Electric Irons (Safety Requirements)"
-        elif "302-2-30" in sid:
-            code = "IS 302-2-30"
-            title = "Room Heaters (Safety Requirements)"
-        elif "302-2-80" in sid:
-            code = "IS 302-2-80"
-            title = "Electric Fans (Safety Requirements)"
-        elif "302-2-7" in sid:
-            code = "IS 302-2-7"
-            title = "Electric Clothes Washing Machines"
-        elif "302-2-14" in sid:
-            code = "IS 302-2-14"
-            title = "Electric Kitchen Machines"
-        elif "302-2-6" in sid:
-            code = "IS 302-2-6"
-            title = "Cooking Ranges, Hobs, Ovens"
-        elif "302-2-35" in sid:
-            code = "IS 302-2-35"
-            title = "Instantaneous Water Heaters"
-        elif "302-2-11" in sid:
-            code = "IS 302-2-11"
-            title = "Tumbler Dryers"
-        elif "302-2-202" in sid:
-            code = "IS 302-2-202"
-            title = "Electric Stoves and Hotplates"
-        else:
-            continue
-            
-        if not any(o["code"] == code for o in options):
-            options.append({
-                "id": sid,
-                "code": code,
-                "title": title
-            })
-            
+    options = [
+        {"id": row[0], "code": row[1], "title": row[2]}
+        for row in rows
+        if row[0] and row[1] and row[2]
+    ]
     return {"options": options}
 
 @app.get("/api/standards/{standard_id}/testing-and-labs")
@@ -2660,7 +2639,7 @@ async def get_standard_process(standard_id: str):
     return {"standard_id": standard_id, "matched_standard_id": matched_proc_std, "steps": steps}
 
 class EstimatorCalculateRequest(BaseModel):
-    standard_id: Optional[str] = "368-2014-electric-immersion-water-heaters"
+    standard_id: Optional[str] = None
     scheme: str = "Scheme-I"
     industry_scale: str = "micro"
     is_foreign: bool = False
@@ -2669,83 +2648,181 @@ class EstimatorCalculateRequest(BaseModel):
 
 @app.post("/api/estimator/calculate")
 async def calculate_fees(req: EstimatorCalculateRequest):
+    if not req.standard_id:
+        return {
+            "success": False,
+            "code": "MISSING_STANDARD_ID",
+            "message": "Please select an Indian Standard from the database."
+        }
+
     conn = get_db()
     cur = conn.cursor()
 
     try:
-        cur.execute("SELECT fee_type, amount, unit, applicable_to, notes FROM bis_fees WHERE scheme = %s;", (req.scheme,))
+        # 1. Resolve authoritative standard from database
+        std_id = ""
+        std_num = ""
+        std_title = ""
+        cur.execute("SELECT id::text, standard_number, title FROM standards WHERE id::text = %s OR standard_number = %s LIMIT 1;", (req.standard_id, req.standard_id))
+        s_row = cur.fetchone()
+        if s_row:
+            std_id = s_row[0] or ""
+            std_num = s_row[1] or ""
+            std_title = s_row[2] or ""
+        else:
+            cur.execute("SELECT id, title FROM bis_standards WHERE id = %s LIMIT 1;", (req.standard_id,))
+            s_row = cur.fetchone()
+            if s_row:
+                std_id = s_row[0] or ""
+                std_num = s_row[0] or ""
+                std_title = s_row[1] or ""
+
+        if not std_num:
+            return {
+                "success": False,
+                "code": "STANDARD_NOT_FOUND",
+                "message": "Selected standard was not found in the database."
+            }
+
+        # Check for Foreign Manufacturer (FMCS): bis_fees currently contains Scheme-I domestic gazette rates
+        if req.is_foreign:
+            return {
+                "success": False,
+                "code": "FEE_DATA_UNAVAILABLE",
+                "message": f"No verified fee data is available for foreign manufacturers (FMCS) under {std_num} in the current database."
+            }
+
+        # 2. Query fee records from bis_fees
+        cur.execute("SELECT fee_type, amount, unit, applicable_to, notes, standard_id::text FROM bis_fees WHERE scheme = %s;", (req.scheme,))
         fee_rows = cur.fetchall()
 
+        req_parsed = parse_standard_components(std_num)
+        req_base = req_parsed.get("base")
+        req_canon = req_parsed.get("canonical")
+        req_part = req_parsed.get("part")
+        req_sec = req_parsed.get("sec")
+
+        standard_fee_rows = []
+        general_fee_rows = []
+
+        for fr in fee_rows:
+            f_type = fr[0] or ""
+            amt = float(fr[1]) if fr[1] is not None else 0.0
+            unit = fr[2] or ""
+            app = fr[3] or ""
+            notes = fr[4] or ""
+            f_std_id = fr[5] or ""
+            
+            if f_std_id and std_id and f_std_id == std_id:
+                standard_fee_rows.append((f_type, amt, unit, app, notes))
+            elif not app or "bis product certification" in app.lower():
+                general_fee_rows.append((f_type, amt, unit, app, notes))
+            else:
+                app_parsed = parse_standard_components(app)
+                if app_parsed.get("base") == req_base:
+                    if req_canon and app_parsed.get("canonical") == req_canon:
+                        standard_fee_rows.append((f_type, amt, unit, app, notes))
+                    elif not req_part and not req_sec and not app_parsed.get("part") and not app_parsed.get("sec"):
+                        standard_fee_rows.append((f_type, amt, unit, app, notes))
+
+        # Strict Database Check: If no fee records in bis_fees match this standard, return FEE_DATA_UNAVAILABLE
+        if not standard_fee_rows:
+            return {
+                "success": False,
+                "code": "FEE_DATA_UNAVAILABLE",
+                "message": f"No verified fee data is available for the selected standard ({std_num}) in the current database."
+            }
+
+        # 3. Query laboratory charges from lab_test_charges without fake default
         matched_lab_std = resolve_matching_standard_id(cur, "lab_test_charges", req.standard_id)
         cur.execute("SELECT AVG(testing_charge) FROM lab_test_charges WHERE standard_id = %s;", 
                     (matched_lab_std or req.standard_id,))
-        avg_lab_charge = cur.fetchone()[0] or 6000
+        lab_row = cur.fetchone()
+        avg_lab_charge = float(lab_row[0]) if (lab_row and lab_row[0] is not None) else None
+
     finally:
         cur.close()
         conn.close()
 
     scale = req.industry_scale.lower()
-    is_foreign = req.is_foreign
+    currency = "INR"
+    currency_symbol = "₹"
 
-    currency = "USD" if is_foreign else "INR"
-    currency_symbol = "$" if is_foreign else "₹"
-    
+    # Extract standard-specific marking fee for scale
+    selected_marking_fee = None
+    large_marking_fee = None
+    marking_notes = ""
+
+    for fr in standard_fee_rows:
+        ft = fr[0].lower()
+        if "marking fee" in ft:
+            if "large" in ft:
+                large_marking_fee = fr[1]
+            if scale in ft:
+                selected_marking_fee = fr[1]
+                marking_notes = fr[4] or f"Authoritative gazette rate for {scale.title()} Enterprise from bis_fees"
+
+    # Fallback to any marking fee row for this standard if specific scale not distinguished
+    if selected_marking_fee is None:
+        for fr in standard_fee_rows:
+            if "marking fee" in fr[0].lower():
+                selected_marking_fee = fr[1]
+                marking_notes = fr[4] or "Authoritative gazette rate from bis_fees"
+                break
+
+    if selected_marking_fee is None:
+        return {
+            "success": False,
+            "code": "FEE_DATA_UNAVAILABLE",
+            "message": f"No verified marking fee data is available for {std_num} ({scale.title()} scale) in the current database."
+        }
+
+    # Extract statutory Application, Inspection, Licence fees directly from bis_fees
+    base_app_fee = 0.0
+    app_notes = "Statutory Application Fee"
+    base_inspection_fee = 0.0
+    base_annual_licence = 0.0
+
+    # Search standard-specific first, then general rows in bis_fees
+    combined_rows = standard_fee_rows + general_fee_rows
+    for fr in combined_rows:
+        ft = fr[0].lower()
+        amt = fr[1]
+        if "application" in ft and base_app_fee == 0.0:
+            base_app_fee = amt
+            if fr[4]: app_notes = fr[4]
+        elif "inspection" in ft and base_inspection_fee == 0.0:
+            base_inspection_fee = amt
+        elif "annual licence" in ft and base_annual_licence == 0.0:
+            base_annual_licence = amt
+
+    # Dynamic MSME concession calculation based strictly on DB amounts:
+    # In bis_fees, Large scale marking fee represents standard tariff, while Micro/Small rates represent statutory concessions.
+    marking_concession = 0.0
     concession_pct = 0
-    if not is_foreign:
-        if scale in ("micro", "startup"):
-            concession_pct = 50
-        elif scale == "small":
-            concession_pct = 20
+    if large_marking_fee and scale in ("micro", "small", "medium"):
+        marking_concession = max(0.0, large_marking_fee - selected_marking_fee)
+        if large_marking_fee > 0:
+            concession_pct = int(round((marking_concession / large_marking_fee) * 100))
 
-    if is_foreign:
-        base_app_fee = 1000.0
-        base_inspection_fee = 1500.0
-        base_annual_licence = 1000.0
-        base_marking_fee = 2000.0
-        total_inspection = (base_inspection_fee * req.inspection_days) + 1500.0
-        lab_testing_charge = 850.0 * req.num_varieties
-        app_concession = 0.0
-        net_app_fee = base_app_fee
-        tax_rate = 0.0  # Zero-rated regulatory service for overseas manufacturers
-        inspection_notes = f"{req.inspection_days} Man-Days (${int(base_inspection_fee * req.inspection_days)}) + International Travel & Daily Allowance (DA) Per-Diem ($1,500)"
-        app_notes = "Non-refundable statutory FMCS application fee (USD)"
-        lab_notes = f"Estimated independent testing fee for {req.num_varieties} model(s)"
-        marking_notes = "Minimum annual marking fee under FMCS (Scheme-I)"
+    total_inspection = base_inspection_fee * req.inspection_days
+    inspection_notes = f"{req.inspection_days} Man-Days @ ₹{int(base_inspection_fee)}/day"
+
+    if avg_lab_charge is not None:
+        lab_testing_charge = avg_lab_charge * req.num_varieties
+        lab_notes = f"Average authoritative laboratory charge for {req.num_varieties} variety from database"
     else:
-        base_app_fee = 1000.0
-        base_inspection_fee = 7000.0
-        base_annual_licence = 1000.0
-        base_marking_fee = 17800.0
+        lab_testing_charge = 0.0
+        lab_notes = "No laboratory testing tariff records listed in database for this standard"
 
-        for fr in fee_rows:
-            f_type = fr[0].lower()
-            amt = float(fr[1])
-            if "application" in f_type:
-                base_app_fee = amt
-            elif "inspection" in f_type:
-                base_inspection_fee = amt
-            elif "annual licence" in f_type:
-                base_annual_licence = amt
-            elif "marking fee" in f_type:
-                if scale in f_type:
-                    base_marking_fee = amt
-
-        app_concession = base_app_fee * (concession_pct / 100.0)
-        net_app_fee = base_app_fee - app_concession
-        total_inspection = base_inspection_fee * req.inspection_days
-        lab_testing_charge = float(avg_lab_charge) * req.num_varieties
-        tax_rate = 18.0
-        inspection_notes = f"{req.inspection_days} Man-Days @ ₹{int(base_inspection_fee)}/day"
-        app_notes = f"{concession_pct}% MSME Concession applied with valid Udyam" if concession_pct > 0 else "Standard Statutory Fee"
-        lab_notes = f"Average authoritative laboratory charge for {req.num_varieties} variety"
-        marking_notes = f"Authoritative gazette rate for {scale.title()} Enterprise"
+    tax_rate = 18.0
 
     items = [
         {
             "category": "Statutory Application Fee",
             "amount": base_app_fee,
-            "concession": app_concession,
-            "net": net_app_fee,
+            "concession": 0.0,
+            "net": base_app_fee,
             "notes": app_notes
         },
         {
@@ -2767,13 +2844,13 @@ async def calculate_fees(req: EstimatorCalculateRequest):
             "amount": base_annual_licence,
             "concession": 0.0,
             "net": base_annual_licence,
-            "notes": "Statutory annual licence fee"
+            "notes": "Statutory annual licence fee from bis_fees"
         },
         {
             "category": "Minimum Annual Marking Fee",
-            "amount": base_marking_fee,
-            "concession": 0.0,
-            "net": base_marking_fee,
+            "amount": large_marking_fee if large_marking_fee else selected_marking_fee,
+            "concession": marking_concession,
+            "net": selected_marking_fee,
             "notes": marking_notes
         }
     ]
@@ -2781,20 +2858,21 @@ async def calculate_fees(req: EstimatorCalculateRequest):
     subtotal = sum(i["net"] for i in items)
     tax_amount = round(subtotal * (tax_rate / 100.0), 2)
     total_year_1 = round(subtotal + tax_amount, 2)
-    recurring_year_2 = round((base_annual_licence + base_marking_fee) * (1.0 + (tax_rate / 100.0)), 2)
+    recurring_year_2 = round((base_annual_licence + selected_marking_fee) * (1.0 + (tax_rate / 100.0)), 2)
 
     optimization_guidelines = [
         "Group similar models under the same series/family to reduce duplicate laboratory test batches.",
         "Ensure complete factory in-house routine test facilities are operational to avoid inspection recall penalties.",
-        "Maintain valid Udyam / DPIIT registration to claim statutory 50% or 20% fee concessions where eligible.",
+        "Maintain valid Udyam / DPIIT registration to claim statutory fee concessions where eligible.",
         "Plan batch production schedules to optimize minimum annual marking fee volume thresholds."
     ]
 
     return {
+        "success": True,
         "currency": currency,
         "currency_symbol": currency_symbol,
         "industry_scale": scale,
-        "is_foreign": is_foreign,
+        "is_foreign": req.is_foreign,
         "concession_percentage": concession_pct,
         "items": items,
         "subtotal": subtotal,

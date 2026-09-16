@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" fill="none">
+  <defs>
+    <linearGradient id="bisGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0F4C81" />
+      <stop offset="100%" stop-color="#0B3B60" />
+    </linearGradient>
+    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B" />
+      <stop offset="100%" stop-color="#D97706" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="110" fill="url(#bisGrad)" />
+  <circle cx="256" cy="256" r="210" stroke="#FFFFFF" stroke-opacity="0.15" stroke-width="8" stroke-dasharray="12 12" />
+  
+  <!-- Outer Ring Badge -->
+  <circle cx="256" cy="256" r="185" fill="none" stroke="url(#goldGrad)" stroke-width="12" />
+  
+  <!-- Stylized BIS Geometric ISI Icon -->
+  <path d="M160 310 L256 150 L352 310 Z" fill="none" stroke="#FFFFFF" stroke-width="26" stroke-linejoin="round" stroke-linecap="round" />
+  <path d="M195 260 L317 260" stroke="#FFFFFF" stroke-width="22" stroke-linecap="round" />
+  <circle cx="256" cy="225" r="18" fill="url(#goldGrad)" />
+  
+  <!-- Central Emblem Text -->
+  <text x="256" y="385" font-family="'Noto Sans Devanagari', 'Inter', sans-serif" font-weight="bold" font-size="34" fill="#FFFFFF" text-anchor="middle" letter-spacing="4">BIS • ????</text>
+</svg>
