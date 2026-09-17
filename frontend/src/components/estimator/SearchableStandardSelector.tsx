@@ -163,10 +163,10 @@ export const SearchableStandardSelector: React.FC<SearchableStandardSelectorProp
   const isInputDisabled = disabled || isLoading;
 
   return (
-    <div ref={containerRef} className="relative w-full">
+    <div ref={containerRef} className="relative w-full min-w-0 max-w-full">
       {/* Input */}
-      <div className="relative flex items-center">
-        <div className="absolute left-3.5 pointer-events-none flex items-center">
+      <div className="relative w-full min-w-0 max-w-full flex items-center">
+        <div className="absolute left-3.5 pointer-events-none flex items-center z-10">
           {isLoading
             ? <Loader2 className="w-4 h-4 text-bis-600 animate-spin" />
             : <Search className="w-4 h-4 text-slate-400" />
@@ -183,18 +183,20 @@ export const SearchableStandardSelector: React.FC<SearchableStandardSelectorProp
           aria-activedescendant={isOpen && highlightedIndex >= 0 ? `bis-std-opt-${highlightedIndex}` : undefined}
           disabled={isInputDisabled}
           value={isLoading ? 'Loading BIS standards...' : searchQuery}
+          title={searchQuery || placeholder}
           placeholder={isLoading ? 'Loading BIS standards...' : placeholder}
           onChange={handleChange}
           onFocus={handleFocus}
           onClick={handleClick}
           onKeyDown={handleKeyDown}
-          className={`w-full pl-10 pr-12 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs outline-none ${
+          className={`w-full min-w-0 max-w-full h-11 box-border pl-10 pr-20 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs outline-none truncate ${
             isInputDisabled
               ? 'bg-slate-100 text-slate-400 cursor-not-allowed'
               : 'cursor-text hover:border-slate-400'
           }`}
+          style={{ textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}
         />
-        <div className="absolute right-2.5 flex items-center gap-1">
+        <div className="absolute right-2.5 flex items-center gap-1 z-10 bg-white pl-1 py-0.5 rounded-r-lg">
           {searchQuery && !isInputDisabled && (
             <button
               type="button"
@@ -219,13 +221,13 @@ export const SearchableStandardSelector: React.FC<SearchableStandardSelectorProp
 
       {/* Dropdown */}
       {isOpen && !isInputDisabled && (
-        <div className="absolute left-0 right-0 top-full mt-1.5 bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden z-50">
+        <div className="absolute left-0 right-0 top-full mt-1.5 w-full min-w-0 max-w-full bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden z-50">
           <ul
             id="bis-standard-listbox"
             ref={listRef}
             role="listbox"
             aria-label="BIS Standards"
-            className="max-h-72 sm:max-h-80 overflow-y-auto divide-y divide-slate-100"
+            className="max-h-72 sm:max-h-80 overflow-y-auto divide-y divide-slate-100 w-full min-w-0"
           >
             {filteredOptions.length === 0 ? (
               <li className="py-6 px-4 text-center text-xs sm:text-sm text-slate-500 font-medium">
@@ -244,15 +246,15 @@ export const SearchableStandardSelector: React.FC<SearchableStandardSelectorProp
                     aria-selected={isSelected}
                     onClick={() => handleSelectOption(opt)}
                     onMouseEnter={() => setHighlightedIndex(index)}
-                    className={`p-3 cursor-pointer transition-colors flex items-start justify-between gap-3 group ${
+                    className={`p-3 cursor-pointer transition-colors flex items-start justify-between gap-3 group w-full min-w-0 box-border ${
                       isHighlighted ? 'bg-bis-50' : isSelected ? 'bg-bis-50/60' : 'hover:bg-slate-50'
                     } ${isSelected ? 'border-l-4 border-l-bis-700 pl-2.5' : 'pl-3'}`}
                   >
-                    <div className="min-w-0 flex-1">
-                      <div className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight leading-snug">
+                    <div className="min-w-0 flex-1 break-words">
+                      <div className="text-xs sm:text-sm font-bold text-slate-900 tracking-tight leading-snug break-words">
                         {opt.code}
                       </div>
-                      <div className="text-xs text-slate-500 leading-snug mt-0.5">
+                      <div className="text-xs text-slate-500 leading-snug mt-0.5 break-words">
                         {opt.title}
                       </div>
                     </div>

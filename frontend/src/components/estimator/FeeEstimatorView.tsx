@@ -37,8 +37,8 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
   // Form State
   const [selectedStandardId, setSelectedStandardId] = useState<string>('');
   const [industryScale, setIndustryScale] = useState<IndustryScale>('micro');
-  const [productCount, setProductCount] = useState<number>(1);
-  const [inspectionDays, setInspectionDays] = useState<number>(2);
+  const [productCount, setProductCount] = useState<number | ''>(1);
+  const [inspectionDays, setInspectionDays] = useState<number | ''>(2);
   const [isForeignManufacturer, setIsForeignManufacturer] = useState<boolean>(false);
   const [isPrefilledFromGuide, setIsPrefilledFromGuide] = useState<boolean>(false);
 
@@ -143,8 +143,8 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
         scheme: isForeignManufacturer ? 'Scheme-I' : 'Scheme-I',
         industryScale: isForeignManufacturer ? 'large' : industryScale,
         isForeign: isForeignManufacturer,
-        numVarieties: productCount,
-        inspectionDays: inspectionDays,
+        numVarieties: Number(productCount) || 1,
+        inspectionDays: Number(inspectionDays) || 1,
         signal: controller.signal,
       });
 
@@ -194,7 +194,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
   }, [result]);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-6 printable-receipt-root">
+    <div className="max-w-7xl w-full min-w-0 max-w-full mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12 space-y-6 printable-receipt-root box-border">
       {/* Banner */}
       <div className="bg-gradient-to-r from-bis-950 via-bis-900 to-bis-800 rounded-3xl p-6 sm:p-8 text-white shadow-lg space-y-2 no-print">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -249,10 +249,10 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
       )}
 
       {/* Interactive Form Card */}
-      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 sm:p-8 space-y-6 no-print">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 sm:p-8 space-y-6 no-print w-full min-w-0 max-w-full box-border">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full min-w-0">
           {/* 1. Standard Selector — database-driven searchable combobox */}
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5 md:col-span-2 w-full min-w-0">
             <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center justify-between">
               <span>1. {t('estimator.selectStandard') || 'Applicable Indian Standard (IS Code)'}</span>
               <span className="text-[11px] font-normal text-slate-500">From BIS database catalog</span>
@@ -288,7 +288,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
           </div>
 
           {/* 2. Scale of Industry Dropdown */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 w-full min-w-0">
             <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider flex items-center justify-between">
               <span>2. {t('estimator.scale') || 'Scale of Industry / Enterprise'}</span>
               {!isForeignManufacturer && (
@@ -299,7 +299,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
               value={industryScale}
               onChange={(e) => setIndustryScale(e.target.value as IndustryScale)}
               disabled={isForeignManufacturer}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs disabled:bg-slate-100 disabled:text-slate-400"
+              className="w-full min-w-0 max-w-full h-11 px-3.5 py-2.5 box-border rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs disabled:bg-slate-100 disabled:text-slate-400"
             >
               <option value="micro">{t('step1.microScale') || 'Micro Enterprise (50% Concession with Udyam)'}</option>
               <option value="startup">{t('step1.startupScale') || 'DPIIT Recognized / Women Startup (50% Concession)'}</option>
@@ -313,7 +313,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
           </div>
 
           {/* 3. Inspection Days */}
-          <div className="space-y-1.5">
+          <div className="space-y-1.5 w-full min-w-0">
             <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider">
               3. {t('estimator.inspectionDays') || 'Preliminary Audit / Inspection Days'}
             </label>
@@ -322,8 +322,27 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
               min={1}
               max={10}
               value={inspectionDays}
-              onChange={(e) => setInspectionDays(Math.max(1, Math.min(10, parseInt(e.target.value) || 1)))}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '') {
+                  setInspectionDays('');
+                  return;
+                }
+                const parsed = parseInt(val, 10);
+                if (!isNaN(parsed)) {
+                  if (parsed > 10) {
+                    setInspectionDays(10);
+                  } else {
+                    setInspectionDays(parsed);
+                  }
+                }
+              }}
+              onBlur={() => {
+                if (inspectionDays === '' || inspectionDays < 1) {
+                  setInspectionDays(1);
+                }
+              }}
+              className="w-full min-w-0 max-w-full h-11 px-3.5 py-2.5 box-border rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs fee-estimator-number-input"
             />
             <p className="text-[11px] text-slate-500">
               Statutory auditor man-days (Official rate: ₹7,000/day domestic, $1,500/day FMCS).
@@ -331,7 +350,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
           </div>
 
           {/* 4. Product Varieties / Test Batches */}
-          <div className="space-y-1.5 md:col-span-2">
+          <div className="space-y-1.5 md:col-span-2 w-full min-w-0">
             <label className="block text-xs font-extrabold text-slate-800 uppercase tracking-wider">
               4. {t('estimator.varieties') || 'Number of Product Varieties / Test Batches'}
             </label>
@@ -340,8 +359,27 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
               min={1}
               max={20}
               value={productCount}
-              onChange={(e) => setProductCount(Math.max(1, Math.min(20, parseInt(e.target.value) || 1)))}
-              className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs"
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === '') {
+                  setProductCount('');
+                  return;
+                }
+                const parsed = parseInt(val, 10);
+                if (!isNaN(parsed)) {
+                  if (parsed > 20) {
+                    setProductCount(20);
+                  } else {
+                    setProductCount(parsed);
+                  }
+                }
+              }}
+              onBlur={() => {
+                if (productCount === '' || productCount < 1) {
+                  setProductCount(1);
+                }
+              }}
+              className="w-full min-w-0 max-w-full h-11 px-3.5 py-2.5 box-border rounded-xl border border-slate-300 bg-white text-slate-900 text-xs sm:text-sm font-semibold focus:ring-2 focus:ring-bis-500 focus:border-bis-500 transition-all shadow-xs fee-estimator-number-input"
             />
             <p className="text-[11px] text-slate-500">
               Lab testing charges scale with the number of models/varieties evaluated.

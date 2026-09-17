@@ -72,3 +72,18 @@
     background: white !important;
   }
 }
+
+/* Fee Estimator: Hide number input spinner arrows across all engines */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button,
+.fee-estimator-number-input::-webkit-inner-spin-button,
+.fee-estimator-number-input::-webkit-outer-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
+
+input[type="number"],
+.fee-estimator-number-input {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
