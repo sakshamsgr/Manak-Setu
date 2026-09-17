@@ -21,7 +21,7 @@ interface AskManakSetuViewProps {
   sessions: ChatSession[];
   activeSessionId: string | null;
   setActiveSessionId: (id: string) => void;
-  createNewSession: () => void;
+  createNewSession: () => string; // Updated type since it now returns the ID
   deleteSession: (id: string) => void;
   isLoading: boolean;
   onSendMessage: (msg: string, context?: Record<string, any>) => void;
@@ -56,9 +56,12 @@ export const AskManakSetuView: React.FC<AskManakSetuViewProps> = ({
   useEffect(() => {
     const initialQuery = sessionStorage.getItem('bis_initial_ai_query');
     if (initialQuery) {
+      // Create new session instantly and fire the message without a timeout
+      createNewSession();
       onSendMessage(initialQuery, getBackendContext());
       sessionStorage.removeItem('bis_initial_ai_query');
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const getBackendContext = (): Record<string, any> => {

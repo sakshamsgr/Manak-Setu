@@ -167,16 +167,7 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
             <span>{saveSuccess || (isSaving ? 'Saving...' : 'Save Progress')}</span>
           </button>
 
-          {onOpenAssistant && (
-            <button
-              onClick={() => onOpenAssistant()}
-              className="px-3.5 py-1.5 rounded-xl bg-bis-900 hover:bg-bis-800 text-amber-300 border border-amber-400/40 text-xs font-bold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              <span>{t('assistant.floatingBtn') || '✨ Ask Manak Setu AI'}</span>
-            </button>
-          )}
-
+          
           <button
             onClick={handlePrint}
             disabled={isNotFound}
@@ -218,7 +209,7 @@ export const ProductCertificationGuide: React.FC<ProductCertificationGuideProps>
           </div>
 
           {/* 🌟 STICKY PART: Added !mt-2 to forcefully override the parent container's gap! 🌟 */}
-          <div className="!mt-2 sticky top-[130px] z-50 bg-white shadow-lg rounded-2xl p-2 sm:p-3 border border-slate-200 transition-all">
+          <div className="!mt-2 sticky top-[100px] z-30 bg-white shadow-lg rounded-2xl p-2 sm:p-3 border border-slate-200 transition-all">
             <div className=" grid grid-cols-2 sm:grid-cols-5 gap-2">
               {steps.map((step) => {
                 const isCurrent = step.id === activeStep;

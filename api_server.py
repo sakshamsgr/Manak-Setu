@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from google import genai
 from google.genai import types
 from dotenv import load_dotenv
+import groq  # <--- NEW: Import Groq
 import smtplib
 from email.mime.text import MIMEText
 import random
@@ -57,7 +58,10 @@ logger = logging.getLogger("manak_setu_api")
 SECURE_COOKIE = os.getenv("SECURE_COOKIE", "false").lower() in ("true", "1")
 
 # Initialize Gemini Client once
+# Initialize Gemini Client once
 client = genai.Client()
+# Initialize Groq Client for fast chat generation
+groq_client = groq.Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # --- 1. Setup ---
 app = FastAPI(title="BIS Multimodal RAG Assistant API")
@@ -65,18 +69,7 @@ app = FastAPI(title="BIS Multimodal RAG Assistant API")
 # Enable CORS for local PWA & Vite frontend (supports any local dev port e.g. 5173, 5174, 3000)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "http://localhost:5175",
-        "http://127.0.0.1:5175",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "https://manak-setu-pink.vercel.app",
-    ],
-    allow_origin_regex=r"https://.*\.vercel\.app",
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -849,6 +842,11 @@ async def verify_otp_compat(req: VerifyOtpRequest, response: Response):
 def read_root():
     return {"status": "online", "message": "BIS AI Backend is running"}
 
+@app.get("/health")
+def health_check():
+    """Ultra-fast, zero-dependency endpoint to wake up Render."""
+    return {"status": "awake"}
+
 @app.get("/api/status")
 def api_status():
     db_connected = False
@@ -1190,6 +1188,12 @@ class ChatRequest(BaseModel):
     message: str
     language: str = "en"
     context: Optional[Dict[str, Any]] = None
+# --- 3. Text Chat Endpoint ---
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
+    language: str = "en"
+    context: Optional[Dict[str, Any]] = None
 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest, request: Request):
@@ -1397,26 +1401,32 @@ GROUNDED KNOWLEDGE & HALLUCINATION PREVENTION:
 Indexed BIS Context:
 {context_text}"""
 
-    gemini_history = []
+    # Build Groq message history
+    groq_messages = [{"role": "system", "content": system_instruction}]
+    
     for msg in history[-10:]:
-        gemini_history.append(types.Content(role=msg["role"], parts=[types.Part.from_text(text=msg["text"])]))
+        # Map Gemini's 'model' role to Groq's 'assistant' role
+        role = "assistant" if msg["role"] == "model" else "user"
+        groq_messages.append({"role": role, "content": msg["text"]})
+        
+    groq_messages.append({"role": "user", "content": req.message})
 
     try:
-        response = generate_gemini_content(
-            contents=gemini_history + [
-                types.Content(role="user", parts=[types.Part.from_text(text=req.message)])
-            ],
-            system_instruction=system_instruction,
+        # Use Groq for ultra-fast, timeout-free conversational generation!
+        completion = groq_client.chat.completions.create(
+            model="openai/gpt-oss-20b",  # <--- FIXED: Changed to the universally accessible Instant model
+            messages=groq_messages,
             temperature=0.0
         )
+        response_text = completion.choices[0].message.content
 
         history.append({"role": "user", "text": req.message})
-        history.append({"role": "model", "text": response.text})
+        history.append({"role": "model", "text": response_text})
         chat_sessions[user_id] = history
         save_chat_history_to_db(user_id, history)
 
         # Suppress citations on out-of-domain refusals or when response indicates topic is outside BIS domain
-        resp_lower = (response.text or "").lower()
+        resp_lower = (response_text or "").lower()
         is_refusal = any(phrase in resp_lower for phrase in [
             "outside of the bis domain",
             "outside the bis domain",
@@ -1435,7 +1445,7 @@ Indexed BIS Context:
             "outside my scope"
         ])
 
-        # Sanitize citations: remove internal ranking/distance metrics (Section 18.2) & preserve authentic metadata
+        # Sanitize citations: remove internal ranking/distance metrics & preserve authentic metadata
         citations_result = []
         if retrieved_chunks and not is_conversational and not is_refusal:
             for c in retrieved_chunks:
@@ -1445,10 +1455,14 @@ Indexed BIS Context:
                 if 'text' not in meta or not meta['text']:
                     meta['text'] = c.get('text', '')
                 citations_result.append(meta)
-        return {"response": response.text, "citations": citations_result}
+                
+        return {"response": response_text, "citations": citations_result}
+        
     except Exception as e:
         logger.error(f"Error in /chat endpoint: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="An error occurred while generating response. Please try again.")
+
+# --- 4. Multimodal Endpoint ---
 
 # --- 4. Multimodal Endpoint ---
 @app.post("/chat/multimodal")
