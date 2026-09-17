@@ -71,32 +71,66 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry, onSt
   };
 
   // =========================================================================
-  // FIX: Dynamically Extract Exact Product Name for the Button
+  // ROBUST PRODUCT EXTRACTION WITH STRICT BLACKLIST FILTER
   // =========================================================================
   let suggestedProduct = "";
-  if (!isUser && !isError && message.citations && message.citations.length > 0) {
-    // Find the first citation that looks like a product standard
-    const citation = message.citations.find(c => c.title && !c.title.toLowerCase().includes("guidance") && !c.title.toLowerCase().includes("transition"));
-    
-    if (citation) {
-      const rawTitle = citation.title || citation.document_title || "";
-      // If the DB returns "IS 302-2-3 — Electric Irons", extract just "Electric Irons"
-      if (rawTitle.includes("—")) {
-        suggestedProduct = rawTitle.split("—")[1].replace(/\(.*?\)/g, '').trim();
-      } else {
-        // Otherwise just clean up standard parentheses
-        suggestedProduct = rawTitle.replace(/\(.*?\)/g, '').split('-')[0].trim();
-      }
+  
+  if (!isUser && !isError) {
+    // 1. Try to extract from Citations
+    if (message.citations && message.citations.length > 0) {
+      const citation = message.citations.find(c => c.title && !c.title.toLowerCase().includes("guidance") && !c.title.toLowerCase().includes("transition"));
       
-      // Fallback: Ensure we didn't extract an IS code
-      if (suggestedProduct.toUpperCase().startsWith("IS ")) {
-        suggestedProduct = ""; 
+      if (citation) {
+        const rawTitle = citation.title || citation.document_title || "";
+        if (rawTitle.includes("—")) {
+          suggestedProduct = rawTitle.split("—")[1].replace(/\(.*?\)/g, '').trim();
+        } else if (rawTitle.includes("-")) {
+          const parts = rawTitle.split("-");
+          suggestedProduct = parts[parts.length - 1].replace(/\(.*?\)/g, '').trim();
+        } else {
+          suggestedProduct = rawTitle.replace(/\(.*?\)/g, '').trim();
+        }
+        
+        if (suggestedProduct.match(/^IS\s*\d+/i)) {
+          suggestedProduct = ""; 
+        }
+      }
+    }
+
+    // 2. Fallback: Scan text for bolded product subjects
+    if (!suggestedProduct) {
+      const boldMatch = displayContent.match(/\*\*([A-Z][a-zA-Z\s]+)\*\*/);
+      if (boldMatch && boldMatch[1].length > 3 && boldMatch[1].length < 35) {
+        suggestedProduct = boldMatch[1].trim();
+      }
+    }
+
+    // 3. Ultimate Fallback: Scan text for standard IS codes (e.g. IS 302-2-3)
+    if (!suggestedProduct) {
+      const isCodeMatch = displayContent.match(/\b(IS\s*\d+(?:\s*:\s*\d+)?)\b/i);
+      if (isCodeMatch) {
+        suggestedProduct = isCodeMatch[1].trim();
       }
     }
   }
 
-  // Only show the button if we successfully extracted a valid, reasonably sized product name
-  const showProductGuideCTA = Boolean(onStartProductGuide && suggestedProduct && suggestedProduct.length > 2 && suggestedProduct.length < 45);
+  // Strict blacklist to completely block generic terms, legal frameworks, and greetings from showing the CTA
+  const blacklistedTerms = [
+    'bureau of indian standards', 'bis act', 'quality control order', 'qco',
+    'isi mark', 'compulsory registration scheme', 'crs', 'fmcs', 'hallmarking',
+    'huid', 'nabl', 'welcome', 'manak setu', 'standards', 'compliance'
+  ];
+
+  const isBlacklisted = blacklistedTerms.some(term => suggestedProduct.toLowerCase().includes(term));
+
+  // Only show button if we have a valid product name/code and it is NOT blacklisted
+  const showProductGuideCTA = Boolean(
+    onStartProductGuide && 
+    suggestedProduct && 
+    !isBlacklisted &&
+    suggestedProduct.length >= 3 && 
+    suggestedProduct.length < 50
+  );
 
   return (
     <div className={`flex gap-2 sm:gap-3 py-1.5 px-1 animate-fade-in ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -161,13 +195,13 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry, onSt
                   <PackageSearch className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Want to know more about your Product?</p>
-                  
+                  <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider mb-0.5">Want to know more about this?</p>
+                  <p className="text-xs font-bold text-slate-700">Open full compliance guide for <span className="text-bis-700">"{suggestedProduct}"</span></p>
                 </div>
               </div>
               <button
                 onClick={() => onStartProductGuide!(suggestedProduct)}
-                className="group relative flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white rounded-xl text-sm font-extrabold transition-all shadow-[0_4px_14px_0_rgba(245,158,11,0.39)] hover:shadow-[0_6px_20px_rgba(245,158,11,0.23)] hover:-translate-y-0.5 active:translate-y-0 overflow-hidden"
+                className="group relative flex items-center justify-center gap-2 px-5 py-2.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white rounded-xl text-sm font-extrabold transition-all shadow-[0_4px_14px_0_rgba(245,158,11,0.39)] hover:shadow-[0_6px_20px_rgba(245,158,11,0.23)] hover:-translate-y-0.5 active:translate-y-0 overflow-hidden shrink-0 cursor-pointer"
               >
                 {/* Shine animation effect overlay */}
                 <div className="absolute inset-0 w-full h-full bg-gradient-to-r from-transparent via-white/30 to-transparent -translate-x-[150%] group-hover:translate-x-[150%] transition-transform duration-700 ease-in-out"></div>
@@ -232,10 +266,10 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, onRetry, onSt
               </>
             )}
             <div className="h-4 w-px bg-slate-200 mx-1" />
-            <button onClick={() => setFeedback(feedback === 'up' ? null : 'up')} className={`p-1.5 rounded-lg transition-colors ${feedback === 'up' ? 'text-emerald-600 bg-emerald-50' : 'hover:text-slate-700 hover:bg-slate-100'}`}>
+            <button onClick={() => setFeedback(feedback === 'up' ? null : 'up')} className={`p-1.5 rounded-lg transition-colors cursor-pointer ${feedback === 'up' ? 'text-emerald-600 bg-emerald-50' : 'hover:text-slate-700 hover:bg-slate-100'}`}>
               <ThumbsUp className="w-4 h-4" />
             </button>
-            <button onClick={() => setFeedback(feedback === 'down' ? null : 'down')} className={`p-1.5 rounded-lg transition-colors ${feedback === 'down' ? 'text-rose-600 bg-rose-50' : 'hover:text-slate-700 hover:bg-slate-100'}`}>
+            <button onClick={() => setFeedback(feedback === 'down' ? null : 'down')} className={`p-1.5 rounded-lg transition-colors cursor-pointer ${feedback === 'down' ? 'text-rose-600 bg-rose-50' : 'hover:text-slate-700 hover:bg-slate-100'}`}>
               <ThumbsDown className="w-4 h-4" />
             </button>
           </div>

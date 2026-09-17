@@ -97,13 +97,21 @@ export function useChat() {
     return [createNewSessionObject('web_user_1', 'General BIS Inquiry')];
   });
 
-  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+  const [activeSessionIdState, setActiveSessionIdState] = useState<string>(() => {
     try {
       const saved = localStorage.getItem(ACTIVE_SESSION_KEY);
       if (saved) return saved;
     } catch {}
     return 'web_user_1';
   });
+
+  // FIX: Create a synchronous ref to eliminate the React state race condition
+  const activeSessionIdRef = useRef<string>(activeSessionIdState);
+
+  const setActiveSessionId = useCallback((id: string) => {
+    activeSessionIdRef.current = id;
+    setActiveSessionIdState(id);
+  }, []);
 
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -119,9 +127,9 @@ export function useChat() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionId);
+      localStorage.setItem(ACTIVE_SESSION_KEY, activeSessionIdState);
     } catch (e) {}
-  }, [activeSessionId]);
+  }, [activeSessionIdState]);
 
   // Clean up any in-flight request on unmount
   useEffect(() => {
@@ -130,7 +138,7 @@ export function useChat() {
     };
   }, []);
 
-  const activeSession = sessions.find((s) => s.id === activeSessionId) || sessions[0];
+  const activeSession = sessions.find((s) => s.id === activeSessionIdState) || sessions[0];
   const [isTranslatingHistory, setIsTranslatingHistory] = useState(false);
   const prevLangRef = useRef(language);
   const sessionsRef = useRef(sessions);
@@ -139,7 +147,8 @@ export function useChat() {
   const updateActiveSessionMessages = useCallback((updater: (prev: ChatMessage[]) => ChatMessage[]) => {
     setSessions((prevSessions) => {
       return prevSessions.map((session) => {
-        if (session.id === activeSessionId) {
+        // Use the synchronous ref so it always targets the correct session, even immediately after creation
+        if (session.id === activeSessionIdRef.current) {
           const updatedMessages = updater(session.messages);
           // Update title dynamically from first user message if default
           let title = session.title;
@@ -159,7 +168,7 @@ export function useChat() {
         return session;
       });
     });
-  }, [activeSessionId]);
+  }, []);
 
   // Language switch effect: Translate existing history to target language non-destructively
   useEffect(() => {
@@ -189,7 +198,7 @@ export function useChat() {
     prevLangRef.current = language;
 
     // Find active session from ref
-    const currentSession = sessionsRef.current.find((s) => s.id === activeSessionId);
+    const currentSession = sessionsRef.current.find((s) => s.id === activeSessionIdState);
     if (!currentSession) return;
 
     // 2. Identify messages in the active session that do NOT have a translation for the selected language
@@ -249,16 +258,16 @@ export function useChat() {
     return () => {
       isCancelled = true;
     };
-  }, [language, activeSessionId, updateActiveSessionMessages]);
+  }, [language, activeSessionIdState, updateActiveSessionMessages]);
 
   const createNewSession = useCallback(() => {
     activeAbortControllerRef.current?.abort();
     const newSession = createNewSessionObject();
     setSessions((prev) => [newSession, ...prev]);
-    setActiveSessionId(newSession.id);
+    setActiveSessionId(newSession.id); // Triggers ref update instantly
     setErrorMessage(null);
     return newSession.id;
-  }, []);
+  }, [setActiveSessionId]);
 
   const deleteSession = useCallback((sessionId: string) => {
     activeAbortControllerRef.current?.abort();
@@ -269,12 +278,12 @@ export function useChat() {
         setActiveSessionId(fresh.id);
         return [fresh];
       }
-      if (activeSessionId === sessionId) {
+      if (activeSessionIdRef.current === sessionId) {
         setActiveSessionId(filtered[0].id);
       }
       return filtered;
     });
-  }, [activeSessionId]);
+  }, [setActiveSessionId]);
 
   const clearCurrentMessages = useCallback(() => {
     activeAbortControllerRef.current?.abort();
@@ -314,7 +323,7 @@ export function useChat() {
 
     try {
       const response = await sendChatMessage(
-        activeSessionId, 
+        activeSessionIdRef.current, // Use synchronous ref!
         trimmed, 
         language, 
         context, 
@@ -396,7 +405,7 @@ export function useChat() {
 
     try {
       const response = await sendMultimodalMessage(
-        activeSessionId, 
+        activeSessionIdRef.current, // Use synchronous ref!
         userText, 
         file, 
         language, 
@@ -465,7 +474,7 @@ export function useChat() {
   return {
     sessions,
     activeSession,
-    activeSessionId,
+    activeSessionId: activeSessionIdState,
     setActiveSessionId,
     createNewSession,
     deleteSession,

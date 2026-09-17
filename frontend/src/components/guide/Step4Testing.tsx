@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom'; // <--- NEW IMPORT
 import { 
   FlaskConical, 
   ArrowRight, 
@@ -275,24 +276,18 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
     return 'bg-slate-100 text-slate-700 border-slate-200 font-semibold';
   };
 
- const getMapsUrl = (lab: any) => {
-  // 1. Gather all the text details (Name, Address, City, etc.)
-  const queryParts = [lab.labName, lab.address, lab.city, lab.state, lab.pincode].filter(Boolean);
-  const textQuery = queryParts.join(', ');
+  const getMapsUrl = (lab: any) => {
+    const queryParts = [lab.labName, lab.address, lab.city, lab.state, lab.pincode].filter(Boolean);
+    const textQuery = queryParts.join(', ');
 
-  if (lab.lat && lab.lng) {
-    // 2. Combine Coordinates WITH the text query for maximum accuracy!
-    const combinedQuery = `${lab.lat},${lab.lng} ${textQuery}`;
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(combinedQuery)}`;
-  }
-  
-  // 3. Fallback just in case a lab is missing coordinates in your database
-  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(textQuery)}`;
-};
+    if (lab.lat && lab.lng) {
+      const combinedQuery = `${lab.lat},${lab.lng} ${textQuery}`;
+      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(combinedQuery)}`;
+    }
+    
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(textQuery)}`;
+  };
 
-  // =========================================================================================
-  // FIX: Smart Tab Navigation (Cycles through Tests -> Labs -> Grouping, then to next step)
-  // =========================================================================================
   const handleSmartContinue = () => {
     if (activeTab === 'tests') {
       setActiveTab('labs');
@@ -305,17 +300,15 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
     }
   };
 
-  // Determine button text based on active tab
   let nextBtnText = "Continue to Documents";
   if (activeTab === 'tests') nextBtnText = "Next: View Recognized Labs";
   if (activeTab === 'labs') nextBtnText = "Next: View Grouping Rules";
 
-
   return (
     <div className="space-y-6 animate-fade-in relative">
-      {/* Location Modal */}
-      {showLocationModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
+      {/* 🌟 FIX: PORTAL MODAL TO ROOT BODY 🌟 */}
+      {showLocationModal && createPortal(
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-fade-in">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-7 shadow-2xl border border-slate-100 space-y-5 relative">
             <button
               onClick={handleSkipLocation}
@@ -410,7 +403,8 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
               </span>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Header Section */}

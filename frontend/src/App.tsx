@@ -67,6 +67,11 @@ const AuthenticatedAppContent: React.FC = () => {
   };
 
   useEffect(() => {
+    // 1. Instantly wake up the Render backend!
+    const backendUrl = import.meta.env.VITE_API_URL || 'https://manak-setu-8no0.onrender.com';
+    fetch(`${backendUrl}/health`).catch(() => {});
+
+    // 2. Set up event listeners
     const handleHashChange = () => {
       const hash = window.location.hash.replace('#', '').toLowerCase();
       
@@ -91,6 +96,7 @@ const AuthenticatedAppContent: React.FC = () => {
     };
     window.addEventListener('manak_setu_navigate', handleCustomNav);
 
+    // 3. Cleanup function MUST be at the very bottom!
     return () => {
       window.removeEventListener('hashchange', handleHashChange);
       window.removeEventListener('manak_setu_navigate', handleCustomNav);

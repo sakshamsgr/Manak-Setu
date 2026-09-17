@@ -2,11 +2,15 @@ import os
 import json
 from rank_bm25 import BM25Okapi
 import chromadb
-from google import genai
+import groq
+from dotenv import load_dotenv
 
-# 1. Initialize Gemini Client (Make sure you have your GEMINI_API_KEY set in your environment variables, or replace it here temporarily for testing)
-# You can set it in terminal via: $env:GEMINI_API_KEY="your_api_key_here"
-client = genai.Client()
+# Load environment variables (.env)
+load_dotenv()
+
+# 1. Initialize Groq Client for fast, reliable answer generation
+# Make sure GROQ_API_KEY is set in your .env or system environment
+groq_client = groq.Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 # 2. Connect to ChromaDB for Vector Search
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
@@ -63,32 +67,36 @@ def ask_bis_assistant(user_question):
     
     retrieved_chunks = hybrid_search(user_question, top_k=3)
     
-    # Build context block for Gemini
+    # Build context block for the LLM
     context_text = ""
     citations = []
     for i, item in enumerate(retrieved_chunks):
         context_text += f"\n--- Source Chunk {i+1} ({item['meta']['standard_id']}, Page {item['meta']['page_number']}) ---\n{item['text']}\n"
         citations.append(f"{item['meta']['standard_id']} (Page {item['meta']['page_number']})")
         
-    # Prompt engineering for strict factual grounding
-    prompt = f"""
-    You are an expert regulatory compliance assistant specializing in Indian Standards (BIS). 
-    Answer the user's question using ONLY the provided context below. If the answer cannot be found in the context, state clearly that the standard document does not contain this information. Always cite the standard ID and page number.
+    system_instruction = (
+        "You are an expert regulatory compliance assistant specializing in Indian Standards (BIS). "
+        "Answer the user's question using ONLY the provided context below. If the answer cannot be found "
+        "in the context, state clearly that the standard document does not contain this information. "
+        "Always cite the standard ID and page number."
+    )
+
+    user_content = f"Context:\n{context_text}\n\nUser Question: {user_question}"
     
-    Context:
-    {context_text}
-    
-    User Question: {user_question}
-    """
-    
-    print("Generating answer with Gemini...")
-    response = client.models.generate_content(
-        model='gemini-2.5-flash',
-        contents=prompt,
+    print("Generating answer with Groq (Llama-3.3-70b-versatile)...")
+    completion = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": user_content}
+        ],
+        temperature=0.0
     )
     
+    response_text = completion.choices[0].message.content
+    
     print("\n=== AI Assistant Response ===")
-    print(response.text)
+    print(response_text)
     print(f"\nCitations used: {list(set(citations))}")
 
 # Test the script out!
