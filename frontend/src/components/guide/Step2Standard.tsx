@@ -308,62 +308,76 @@ export const Step2Standard: React.FC<Step2StandardProps> = ({
         </div>
       </div>
 
-      {/* ── 5. RELATED STANDARDS ───────────────────────── */}
-      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm space-y-3">
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-slate-200 text-slate-700">
-            <Layers className="w-4 h-4" />
-          </div>
-          <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-            Other Helpful Rulebooks
+{/* ── VISUAL SEPARATOR ─────────────────────────────────────────── */}
+      <div className="pt-3 pb-1">
+        <div className="flex items-center gap-3 opacity-70">
+          <div className="h-px bg-slate-200 flex-1"></div>
+          <span className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
+            Supplementary References
           </span>
+          <div className="h-px bg-slate-200 flex-1"></div>
         </div>
+      </div>
 
-        {parsedRelated.length > 0 ? (
-          <>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {/* ── 5 & 6. RELATED STANDARDS & OFFICIAL EVIDENCE (Side-by-Side) ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-stretch">
+        
+        {/* Left Column: RELATED STANDARDS */}
+        <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 shadow-sm flex flex-col h-full">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="p-1.5 rounded-lg bg-slate-200 text-slate-700">
+              <Layers className="w-4 h-4" />
+            </div>
+            <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+              Other Helpful Rulebooks
+            </span>
+          </div>
+
+          {parsedRelated.length > 0 ? (
+            <div className="flex flex-col gap-2">
               {visibleRelated.map((rs, i) => (
                 <div key={i} className={`p-3 rounded-xl border text-xs space-y-0.5 ${rs.isPrimary ? 'bg-bis-50 border-bis-200 shadow-xs' : 'bg-white border-slate-200'}`}>
                   <div className="font-bold text-slate-900 font-mono leading-tight">{rs.code}</div>
                   {rs.description && <p className="text-slate-600 leading-snug">{rs.description}</p>}
                 </div>
               ))}
+              {parsedRelated.length > 3 && (
+                <button
+                  onClick={() => setShowAllRelated(!showAllRelated)}
+                  className="text-xs font-semibold text-bis-700 hover:text-bis-900 flex items-center gap-1 transition-colors pt-1.5 w-fit"
+                >
+                  {showAllRelated ? <><ChevronUp className="w-3.5 h-3.5" /><span>Show Less</span></> : <><ChevronDown className="w-3.5 h-3.5" /><span>View Related Standards ({parsedRelated.length})</span></>}
+                </button>
+              )}
             </div>
-            {parsedRelated.length > 3 && (
-              <button
-                onClick={() => setShowAllRelated(!showAllRelated)}
-                className="text-xs font-semibold text-bis-700 hover:text-bis-900 flex items-center gap-1 transition-colors"
-              >
-                {showAllRelated ? <><ChevronUp className="w-3.5 h-3.5" /><span>Show Less</span></> : <><ChevronDown className="w-3.5 h-3.5" /><span>View Related Standards ({parsedRelated.length})</span></>}
-              </button>
-            )}
-          </>
-        ) : (
-          <p className="text-xs text-slate-400 italic">No related standards found.</p>
-        )}
-      </div>
-
-      {/* ── 6. OFFICIAL BIS EVIDENCE ─────────────────────────────────────── */}
-      {citations && citations.length > 0 && (
-        <div className="space-y-3 p-5 rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-bis-900 text-amber-400">
-                <BookOpen className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
-                  Official BIS Evidence
-                </p>
-                <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                  Scanned directly from official government documents.
-                </p>
-              </div>
-            </div>
-          </div>
-          <CitationsEvidenceGrid citations={citations} />
+          ) : (
+            <p className="text-xs text-slate-400 italic">No related standards found.</p>
+          )}
         </div>
-      )}
+
+        {/* Right Column: OFFICIAL BIS EVIDENCE */}
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 shadow-sm flex flex-col h-full overflow-hidden">
+          <div className="flex-1 w-full p-5 [&>div]:pt-0 [&>div]:border-t-0 [&>div>div]:!grid-cols-1">
+            {citations && citations.length > 0 ? (
+               <CitationsEvidenceGrid citations={citations} />
+            ) : (
+               <div className="flex flex-col gap-2">
+                 <div className="flex items-center gap-2 mb-1">
+                   <div className="p-1.5 rounded-lg bg-bis-900 text-amber-400">
+                     <BookOpen className="w-4 h-4" />
+                   </div>
+                   <span className="text-xs font-extrabold uppercase tracking-wider text-slate-800">
+                     Official Evidence
+                   </span>
+                 </div>
+                 <p className="text-[10px] text-slate-400 font-medium">Scanned directly from official government documents.</p>
+                 <p className="text-xs text-slate-400 italic mt-2">No citations available.</p>
+               </div>
+            )}
+          </div>
+        </div>
+        
+      </div>
 
       {/* ── 7. ASK MANAK SETU AI CARD ─────────────────────────────────── */}
       {onAskAI && (
@@ -404,21 +418,6 @@ export const Step2Standard: React.FC<Step2StandardProps> = ({
         </div>
       )}
 
-      {/* ── 8. YOUR NEXT STEP ─────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm p-5 space-y-3">
-        <div className="text-[10px] font-extrabold uppercase tracking-widest text-slate-500">
-          Your Next Step
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-bis-50 border border-bis-200">
-            <FileCheck2 className="w-5 h-5 text-bis-800" />
-          </div>
-          <div>
-            <div className="text-sm font-extrabold text-slate-900">Testing & Laboratories</div>
-            <div className="text-xs text-slate-500">Find the safety tests your product needs to pass and where to get them done.</div>
-          </div>
-        </div>
-      </div>
 
       {/* ── NAVIGATION ───────────────────────────────────────────────── */}
       <div className="flex items-center justify-between pt-1">
