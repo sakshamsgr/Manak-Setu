@@ -31,7 +31,10 @@ import {
   Phone,
   Coins,
   Store,
-  FileCheck
+  FileCheck,
+  Mail,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
 import { sendChatMessage, sendMultimodalMessage, verifyConsumerMark, ConsumerVerificationResult, getHallmarkingCentres, HallmarkingCentre } from '../../services/api';
@@ -60,6 +63,15 @@ export const HallmarkingView: React.FC<HallmarkingViewProps> = ({ onOpenAssistan
   const [centreTotal, setCentreTotal] = useState(0);
   const [centrePage, setCentrePage] = useState(1);
   const [centreTotalPages, setCentreTotalPages] = useState(1);
+  // --- NEW: Map & Contact States ---
+  const [expandedContactId, setExpandedContactId] = useState<string | null>(null);
+
+  const getMapsUrl = (centre: HallmarkingCentre) => {
+    const queryParts = [centre.name, centre.address, centre.city, centre.state].filter(Boolean);
+    const textQuery = queryParts.join(', ');
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(textQuery)}`;
+  };
+  // ---------------------------------
 
   useEffect(() => {
     if (userRole !== 'business') return;
@@ -634,46 +646,84 @@ export const HallmarkingView: React.FC<HallmarkingViewProps> = ({ onOpenAssistan
                 No matching hallmarking centres found for the current filters.
               </div>
             ) : (
-              centreResults.map((centre) => (
-                <div key={centre.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-xs">
-                  <div className="flex items-start justify-between gap-3">
+              centreResults.map((centre) => {
+                const isContactOpen = expandedContactId === centre.id;
+                
+                return (
+                  <div key={centre.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 shadow-xs flex flex-col justify-between">
                     <div>
-                      <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{centre.state || 'State not listed'}</div>
-                      <h4 className="mt-1 text-base font-bold text-slate-900">{centre.name}</h4>
-                    </div>
-                    <span className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${centre.status?.toLowerCase() === 'operative' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
-                      {centre.status || 'Unknown'}
-                    </span>
-                  </div>
-
-                  <div className="mt-3 space-y-2 text-xs text-slate-600">
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-3.5 h-3.5 text-slate-500" />
-                      <span>{centre.address || `${centre.city || ''}${centre.city && centre.state ? ', ' : ''}${centre.state || ''}`}</span>
-                    </div>
-                    {(centre.recognized_for || (metalType === 'gold' ? 'Gold hallmarking' : 'Silver hallmarking')) && (
-                      <div className="flex items-center gap-2">
-                        <Gem className="w-3.5 h-3.5 text-amber-600" />
-                        <span>{centre.recognized_for || (metalType === 'gold' ? 'Gold hallmarking' : 'Silver hallmarking')}</span>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500">{centre.state || 'State not listed'}</div>
+                          <h4 className="mt-1 text-base font-bold text-slate-900">{centre.name}</h4>
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-bold uppercase ${centre.status?.toLowerCase() === 'operative' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                          {centre.status || 'Unknown'}
+                        </span>
                       </div>
-                    )}
-                    {centre.telephone && (
-                      <div className="flex items-center gap-2">
-                        <Phone className="w-3.5 h-3.5 text-slate-500" />
-                        <span>{centre.telephone}</span>
-                      </div>
-                    )}
-                  </div>
 
-                  <button
-                    type="button"
-                    className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-bis-900 px-3 py-2 text-[11px] font-bold text-white hover:bg-bis-800 transition-colors"
-                  >
-                    View centre details
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))
+                      <div className="mt-3 space-y-2 text-xs text-slate-600">
+                        <div className="flex items-start gap-2">
+                          <MapPin className="w-3.5 h-3.5 text-slate-500 shrink-0 mt-0.5" />
+                          <span className="leading-relaxed">{centre.address || `${centre.city || ''}${centre.city && centre.state ? ', ' : ''}${centre.state || ''}`}</span>
+                        </div>
+                        {(centre.recognized_for || (metalType === 'gold' ? 'Gold hallmarking' : 'Silver hallmarking')) && (
+                          <div className="flex items-center gap-2">
+                            <Gem className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span>{centre.recognized_for || (metalType === 'gold' ? 'Gold hallmarking' : 'Silver hallmarking')}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Contact & Map Action Bar */}
+                    <div className="flex flex-col gap-2 pt-3 mt-4 border-t border-slate-200/70">
+                      <div className="flex flex-wrap items-center gap-2 w-full">
+                        <a
+                          href={getMapsUrl(centre)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 hover:text-emerald-800 text-[11px] font-bold transition-colors border border-emerald-200 shadow-2xs min-w-[120px]"
+                        >
+                          <MapPin className="w-3.5 h-3.5" />
+                          <span>View on Map</span>
+                        </a>
+
+                        {(centre.telephone || centre.email) && (
+                          <button
+                            type="button"
+                            onClick={() => setExpandedContactId(isContactOpen ? null : centre.id)}
+                            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-[11px] font-bold transition-colors shadow-2xs cursor-pointer min-w-[120px] ${
+                              isContactOpen ? "bg-slate-800 text-white" : "bg-slate-900 text-white hover:bg-slate-800"
+                            }`}
+                          >
+                            <span>Contact Centre</span>
+                            {isContactOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Expandable Contact Drawer */}
+                      {isContactOpen && (centre.telephone || centre.email) && (
+                        <div className="mt-1 p-3 bg-white rounded-xl border border-slate-200 flex flex-col gap-2.5 animate-fade-in shadow-sm">
+                          {centre.telephone && (
+                            <a href={`tel:${centre.telephone}`} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 hover:text-indigo-600 transition-colors">
+                              <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{centre.telephone}</span>
+                            </a>
+                          )}
+                          {centre.email && (
+                            <a href={`mailto:${centre.email}`} className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 hover:text-indigo-600 transition-colors">
+                              <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                              <span className="truncate">{centre.email}</span>
+                            </a>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
             )}
           </div>
 
