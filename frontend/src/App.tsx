@@ -223,7 +223,7 @@ const AuthenticatedAppContent: React.FC = () => {
       </main>
 
       {/* Hide footer dynamically if Ask AI is active to maximize chat space */}
-      {activeTab !== 'ask-ai' && <Footer />}
+      {activeTab !== 'ask-ai' && <Footer onSelectTab={setActiveTab} />}
       
       {activeTab === 'home' && guideData && activeStep >= 1 && activeStep <= 6 && (
         <PersistentAiAssistant
