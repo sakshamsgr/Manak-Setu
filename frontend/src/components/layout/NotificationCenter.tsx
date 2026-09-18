@@ -12,10 +12,25 @@ import {
   CheckCircle,
   Calendar,
   Layers,
-  ArrowUpRight
+  ArrowUpRight,
+  CheckCheck
 } from 'lucide-react';
 import { getBisNotifications, BisNotificationItem } from '../../services/api';
 import { useProductContext } from '../../context/ProductContext';
+
+/** Persisted list of notification ids the user has already seen. */
+const SEEN_STORAGE_KEY = 'manak_setu_seen_notifications';
+
+const loadSeenIds = (): string[] => {
+  try {
+    const raw = window.localStorage.getItem(SEEN_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed.filter((v) => typeof v === 'string') : [];
+  } catch {
+    return [];
+  }
+};
 
 export const NotificationCenter: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -26,8 +41,65 @@ export const NotificationCenter: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [hasFetchedOnce, setHasFetchedOnce] = useState(false);
 
+  // Ids already marked as seen (persisted across sessions)
+  const [seenIds, setSeenIds] = useState<Set<string>>(() => new Set(loadSeenIds()));
+  // Ids opened during the current panel session; committed to seenIds when the panel closes
+  const [pendingSeenIds, setPendingSeenIds] = useState<Set<string>>(new Set());
+  const pendingSeenRef = useRef<Set<string>>(new Set());
+
   const panelRef = useRef<HTMLDivElement>(null);
   const { startJourney } = useProductContext();
+
+  // Persist seen ids whenever they change
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(SEEN_STORAGE_KEY, JSON.stringify(Array.from(seenIds)));
+    } catch {
+      /* storage unavailable - seen state stays in-memory for this session */
+    }
+  }, [seenIds]);
+
+  const markPendingSeen = (id: string) => {
+    if (!id || pendingSeenRef.current.has(id)) return;
+    const next = new Set(pendingSeenRef.current);
+    next.add(id);
+    pendingSeenRef.current = next;
+    setPendingSeenIds(next);
+  };
+
+  const commitPendingSeen = () => {
+    const pending = pendingSeenRef.current;
+    if (pending.size === 0) return;
+    setSeenIds((prev) => {
+      const next = new Set(prev);
+      pending.forEach((id) => next.add(id));
+      return next;
+    });
+    pendingSeenRef.current = new Set();
+    setPendingSeenIds(new Set());
+  };
+
+  // Single exit point so every close path (Esc, outside click, X, navigation) marks opened items as seen
+  const closePanel = () => {
+    commitPendingSeen();
+    setExpandedId(null);
+    setIsOpen(false);
+  };
+
+  // Clear all: wipes the current list from the bell so only future notices show up
+  const markAllAsSeen = () => {
+    const ids = notifications.map((n) => n.id);
+    if (ids.length === 0) return;
+    setSeenIds((prev) => {
+      const next = new Set(prev);
+      ids.forEach((id) => next.add(id));
+      return next;
+    });
+    pendingSeenRef.current = new Set();
+    setPendingSeenIds(new Set());
+    setExpandedId(null);
+    setSelectedTypeFilter('all');
+  };
 
   const fetchNotifications = async (showLoading = true) => {
     if (showLoading) setIsLoading(true);
@@ -56,13 +128,13 @@ export const NotificationCenter: React.FC = () => {
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+        closePanel();
       }
     };
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setIsOpen(false);
+        closePanel();
       }
     };
 
@@ -77,16 +149,21 @@ export const NotificationCenter: React.FC = () => {
     };
   }, [isOpen]);
 
+  // Only notices the user has not already seen are surfaced in the bell
+  const unseenNotifications = useMemo(() => {
+    return notifications.filter((n) => !seenIds.has(n.id));
+  }, [notifications, seenIds]);
+
   // Dynamic filter lists based on actual database records
   const availableTypes = useMemo(() => {
-    const types = new Set(notifications.map((n) => n.notification_type));
+    const types = new Set(unseenNotifications.map((n) => n.notification_type));
     return Array.from(types);
-  }, [notifications]);
+  }, [unseenNotifications]);
 
   const filteredNotifications = useMemo(() => {
-    if (selectedTypeFilter === 'all') return notifications;
-    return notifications.filter((n) => n.notification_type === selectedTypeFilter);
-  }, [notifications, selectedTypeFilter]);
+    if (selectedTypeFilter === 'all') return unseenNotifications;
+    return unseenNotifications.filter((n) => n.notification_type === selectedTypeFilter);
+  }, [unseenNotifications, selectedTypeFilter]);
 
   // Helper for notification type details (mapped dynamically, never hardcoding records)
   const getTypeMeta = (type: string) => {
@@ -155,7 +232,7 @@ export const NotificationCenter: React.FC = () => {
   };
 
   const handleNavigateToStandard = (standardIdOrProduct: string) => {
-    setIsOpen(false);
+    closePanel();
     // Switch to home tab
     window.dispatchEvent(new CustomEvent('manak_setu_navigate', { detail: { tab: 'home' } }));
     // Trigger product journey
@@ -167,9 +244,13 @@ export const NotificationCenter: React.FC = () => {
       {/* Bell Trigger Button */}
       <button
         onClick={() => {
-          setIsOpen((prev) => !prev);
-          if (!isOpen && !hasFetchedOnce) {
-            fetchNotifications(true);
+          if (isOpen) {
+            closePanel();
+          } else {
+            setIsOpen(true);
+            if (!hasFetchedOnce) {
+              fetchNotifications(true);
+            }
           }
         }}
         aria-label="BIS Regulatory Notifications"
@@ -181,9 +262,9 @@ export const NotificationCenter: React.FC = () => {
         }`}
       >
         <Bell className="w-5 h-5" />
-        {notifications.length > 0 && (
+        {unseenNotifications.length > 0 && (
           <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 flex items-center justify-center text-[10px] font-extrabold bg-rose-600 text-white rounded-full shadow-xs ring-2 ring-white">
-            {notifications.length}
+            {unseenNotifications.length}
           </span>
         )}
       </button>
@@ -207,6 +288,15 @@ export const NotificationCenter: React.FC = () => {
 
             <div className="flex items-center gap-1.5">
               <button
+                onClick={markAllAsSeen}
+                disabled={unseenNotifications.length === 0}
+                title="Mark all as seen & clear this list"
+                className="px-2 py-1.5 rounded-lg hover:bg-bis-800 text-slate-300 hover:text-white transition-colors disabled:opacity-40 disabled:hover:bg-transparent flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wide"
+              >
+                <CheckCheck className="w-4 h-4" />
+                <span className="hidden sm:inline">Clear All</span>
+              </button>
+              <button
                 onClick={() => fetchNotifications(true)}
                 disabled={isLoading}
                 title="Fetch latest BIS updates"
@@ -215,7 +305,7 @@ export const NotificationCenter: React.FC = () => {
                 <RotateCw className={`w-4 h-4 ${isLoading ? 'animate-spin text-amber-400' : ''}`} />
               </button>
               <button
-                onClick={() => setIsOpen(false)}
+                onClick={closePanel}
                 title="Close"
                 className="p-1.5 rounded-lg hover:bg-bis-800 text-slate-300 hover:text-white transition-colors"
               >
@@ -235,12 +325,12 @@ export const NotificationCenter: React.FC = () => {
                     : 'bg-white text-slate-600 hover:bg-slate-200 border border-slate-200'
                 }`}
               >
-                All ({notifications.length})
+                All ({unseenNotifications.length})
               </button>
 
               {availableTypes.map((type) => {
                 const meta = getTypeMeta(type);
-                const count = notifications.filter((n) => n.notification_type === type).length;
+                const count = unseenNotifications.filter((n) => n.notification_type === type).length;
                 return (
                   <button
                     key={type}
@@ -309,13 +399,20 @@ export const NotificationCenter: React.FC = () => {
               filteredNotifications.map((item) => {
                 const meta = getTypeMeta(item.notification_type);
                 const isExpanded = expandedId === item.id;
+                const isMarkedSeen = pendingSeenIds.has(item.id);
                 const standardId = item.new_value?.standard_id;
                 const productName = item.new_value?.product_name;
 
                 return (
                   <div
                     key={item.id}
-                    onClick={() => setExpandedId(isExpanded ? null : item.id)}
+                    onClick={() => {
+                      if (!isExpanded) {
+                        // Opened & read -> will be cleared once the panel closes
+                        markPendingSeen(item.id);
+                      }
+                      setExpandedId(isExpanded ? null : item.id);
+                    }}
                     className={`p-4 transition-colors cursor-pointer text-left hover:bg-slate-50/80 ${
                       isExpanded ? 'bg-slate-50/90' : 'bg-white'
                     }`}
@@ -329,6 +426,12 @@ export const NotificationCenter: React.FC = () => {
                           {meta.icon}
                           <span>{meta.label}</span>
                         </span>
+                        {isMarkedSeen && (
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-extrabold border bg-slate-100 text-slate-500 border-slate-200">
+                            <CheckCheck className="w-3 h-3" />
+                            <span>Seen</span>
+                          </span>
+                        )}
                       </div>
                       <span className="text-[11px] font-medium text-slate-600 shrink-0 whitespace-nowrap">
                         {formatRelativeTime(item.created_at)}
@@ -476,7 +579,7 @@ export const NotificationCenter: React.FC = () => {
               Source: <strong>BIS Official Gazette & Orders</strong>
             </span>
             <span className="text-slate-400">
-              {notifications.length} {notifications.length === 1 ? 'Notice' : 'Notices'}
+              {unseenNotifications.length} {unseenNotifications.length === 1 ? 'Notice' : 'Notices'}
             </span>
           </div>
         </div>
