@@ -226,13 +226,13 @@ def resolve_matching_standard_id(cur, table_name: str, requested_id: str, col_na
     if not requested_id:
         return None
 
-    # Security: SQL identifier whitelist check to prevent dynamic SQL injection
+    # Security: SQL identifier whitelist check
     if table_name not in ALLOWED_STANDARD_TABLES:
         raise ValueError(f"Unauthorized table name in standard query: {table_name}")
     if col_name not in ALLOWED_STANDARD_COLS:
         raise ValueError(f"Unauthorized column name in standard query: {col_name}")
-        
-    # If requested_id is a UUID, resolve standard_number and title from standards table first
+
+    # If requested_id is a UUID, resolve standard_number and title
     if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', requested_id, re.IGNORECASE):
         try:
             cur.execute("SELECT standard_number, title FROM standards WHERE id = %s;", (requested_id,))
@@ -247,20 +247,29 @@ def resolve_matching_standard_id(cur, table_name: str, requested_id: str, col_na
     # 1. Exact match in table
     cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} = %s LIMIT 1;", (requested_id,))
     row = cur.fetchone()
-    if row:
-        return row[0]
+    if row: return row[0]
         
-    # 2. Parse requested standard into structured components
+    # 2. ROBUST DIGIT SEQUENCE MATCHING
+    req_digits = re.findall(r'\d+', requested_id)
+    if req_digits:
+        base_num = req_digits[0]
+        cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s;", (f"%{base_num}%",))
+        candidates = [r[0] for r in cur.fetchall() if r[0]]
+        req_struct = req_digits[:-1] if len(req_digits) > 1 and len(req_digits[-1]) == 4 and int(req_digits[-1]) > 1900 else list(req_digits)
+        for cand in candidates:
+            cand_digits = re.findall(r'\d+', cand)
+            cand_struct = cand_digits[:-1] if len(cand_digits) > 1 and len(cand_digits[-1]) == 4 and int(cand_digits[-1]) > 1900 else list(cand_digits)
+            if req_struct == cand_struct:
+                return cand
+
+    # 3. Fallback to Parse Standard Components
     parsed = parse_standard_components(requested_id)
     base = parsed["base"]
-    if not base:
-        return None
+    if not base: return None
         
-    # 3. Retrieve all candidate IDs from table that share the base standard number
     cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s OR {col_name} ILIKE %s;", (f"%{base}%", f"{base}%"))
     candidates = [r[0] for r in cur.fetchall() if r[0]]
-    if not candidates:
-        return None
+    if not candidates: return None
         
     best_cand = None
     best_score = -1
@@ -270,49 +279,66 @@ def resolve_matching_standard_id(cur, table_name: str, requested_id: str, col_na
     
     for cand in candidates:
         cand_parsed = parse_standard_components(cand)
-        cand_base = cand_parsed["base"]
-        cand_part = cand_parsed["part"]
-        cand_sec = cand_parsed["sec"]
-        cand_canon = cand_parsed["canonical"]
-        
-        if cand_base != base:
-            continue
+        if cand_parsed["base"] != base: continue
             
         score = 0
-        if cand_canon == req_canon:
+        if cand_parsed["canonical"] == req_canon:
             score = 100
         elif req_part and req_sec:
-            # Multi-part standard: MUST strictly match part and section
-            if cand_part == req_part and cand_sec == req_sec:
-                score = 90
-            else:
-                # Mismatch in section/part (e.g., Fans Sec 80 vs Irons Sec 3) - REJECT
-                continue
+            if cand_parsed["part"] == req_part and cand_parsed["sec"] == req_sec: score = 90
+            else: continue
         elif req_part and not req_sec:
-            # Part-only standard (e.g., IS 302 Part 1)
-            if cand_part == req_part and not cand_sec:
-                score = 90
-            else:
-                continue
+            if cand_parsed["part"] == req_part and not cand_parsed["sec"]: score = 90
+            else: continue
         else:
-            # Base-only standard (e.g., IS 368, IS 3024)
-            if not cand_part and not cand_sec:
-                score = 80
-            else:
-                # Do NOT match a base query to a specific part/section
-                continue
+            if not cand_parsed["part"] and not cand_parsed["sec"]: score = 80
+            else: continue
                 
         if score > best_score:
             best_score = score
             best_cand = cand
             
-    # Companion standard fallback for Portable Immersion Heaters:
-    # In BIS, IS 302 (Part 2/Sec 74) specifies safety requirements verified under IS 368:2014
-    if not best_cand and req_canon == "302-part-2-sec-74":
-        cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE '%368%' LIMIT 1;")
-        row_368 = cur.fetchone()
-        if row_368:
-            best_cand = row_368[0]
+    # 4. DYNAMIC AI VECTOR SEARCH FALLBACK (Zero Hardcoding)
+    # If structural SQL matching fails entirely, use the AI embedding model to find the semantic equivalent!
+    if not best_cand:
+        try:
+            # Get the actual title of the requested standard to use as the semantic search query
+            cur.execute("SELECT title FROM standards WHERE standard_number = %s OR id = %s LIMIT 1;", (requested_id, requested_id))
+            t_row = cur.fetchone()
+            semantic_query = t_row[0] if t_row and t_row[0] else requested_id
+
+            # Ask the AI vector database for the closest conceptual standard
+            vector_docs = supabase_vector_search(semantic_query, top_k=5, threshold=0.70)
+            
+            for d in vector_docs:
+                semantic_sid = d['meta'].get('standard_id', '')
+                if not semantic_sid: continue
+                    
+                # Clean the AI's suggested ID and see if it exists in the target table (e.g., standard_tests)
+                clean_semantic_sid = re.findall(r'\d+', semantic_sid)
+                if clean_semantic_sid:
+                    base_num = clean_semantic_sid[0]
+                    cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s;", (f"%{base_num}%",))
+                    ai_candidates = [r[0] for r in cur.fetchall() if r[0]]
+                    
+                    ai_struct = clean_semantic_sid[:-1] if len(clean_semantic_sid) > 1 and len(clean_semantic_sid[-1]) == 4 and int(clean_semantic_sid[-1]) > 1900 else list(clean_semantic_sid)
+                    
+                    for ai_cand in ai_candidates:
+                        cand_digits = re.findall(r'\d+', ai_cand)
+                        cand_struct = cand_digits[:-1] if len(cand_digits) > 1 and len(cand_digits[-1]) == 4 and int(cand_digits[-1]) > 1900 else list(cand_digits)
+                        
+                        if ai_struct == cand_struct:
+                            # CRITICAL FIX: The AI found the correct string (e.g., 'IS 302-2-3').
+                            # We MUST recursively run it back through the exact match logic 
+                            # at the top so it retrieves the proper SQL UUID for the tables!
+                            cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s LIMIT 1;", (f"%{ai_cand}%",))
+                            final_row = cur.fetchone()
+                            if final_row:
+                                return final_row[0]
+                            return ai_cand
+        except Exception as e:
+            print(f"Dynamic AI Fallback Error: {e}")
+            pass
 
     return best_cand
 
@@ -1753,14 +1779,13 @@ async def _resolve_product_guide_core(req: ProductGuideResolveRequest, conn, cur
 
     GENERIC_WORDS = {
         'for', 'the', 'and', 'with', 'of', 'to', 'in', 'a', 'an', 'is', 'are', 'use', 
-        'domestic', 'household', 'electric', 'electrical', 'electronic', 'appliances', 
-        'appliance', 'device', 'devices', 'equipment', 'similar', 'safety', 'particular', 
-        'general', 'requirements', 'standard', 'indian', 'bis', 'part', 'sec', 'section',
-        'specification', 'code', 'manual', 'product', 'provisions'
+        'appliances', 'appliance', 'device', 'devices', 'equipment', 'similar', 'safety', 
+        'particular', 'general', 'requirements', 'standard', 'indian', 'bis', 'part', 'sec', 
+        'section', 'specification', 'code', 'manual', 'product', 'provisions'
     }
     tokens = [w for w in re.findall(r'\b\w+\b', p_lower) if w not in GENERIC_WORDS and len(w) > 2]
 
-    # 1. Authoritative DB match in product_classifications & standards
+  # 1. Authoritative DB match in product_classifications & standards
     cur.execute("""
         SELECT pc.display_name, pc.product_type, s.id, s.standard_number, s.title, s.certification_type, s.group_name, pc.keywords
         FROM product_classifications pc
@@ -1768,53 +1793,75 @@ async def _resolve_product_guide_core(req: ProductGuideResolveRequest, conn, cur
     """)
     class_rows = cur.fetchall()
 
-    match = None
-    # 1a. Substring or keyword match
+    best_match = None
+    best_score = -1
+    is_from_class = False
+
+    # 1a. Score matches from product_classifications
     for r in class_rows:
         d_name, p_type, s_id, s_num, s_title, cert_type_val, g_name, kws = r
-        if search_term.lower() in d_name.lower() or any(search_term.lower() == k.lower() for k in (kws or [])):
-            match = r[:7]
-            break
+        d_lower = d_name.lower()
+        k_lower = [k.lower() for k in (kws or [])]
+        combined_text = (d_name + " " + " ".join(kws or []) + " " + (s_title or "")).lower()
 
-    # 1b. Token-set match (handles word reorderings such as 'Electric Water Immersion Heater')
-    if not match and tokens:
-        for r in class_rows:
-            d_name, p_type, s_id, s_num, s_title, cert_type_val, g_name, kws = r
-            combined_text = (d_name + " " + " ".join(kws or []) + " " + s_title).lower()
-            if all(tok in combined_text for tok in tokens):
-                match = r[:7]
-                break
+        score = 0
+        if search_term.lower() == d_lower:
+            score = 100
+        elif search_term.lower() in d_lower:
+            score = 90
+        elif search_term.lower() in k_lower:
+            score = 85
+        elif tokens and all(tok in combined_text for tok in tokens):
+            score = 60 - (len(d_lower) * 0.1)
 
-    if match:
-        disp_name, p_type, s_id, s_num, s_title, cert_type_val, g_name = match
-        standard_number = s_num
-        standard_title = s_title
-        cert_type = cert_type_val or "Mandatory"
-        group_name = g_name or group_name
-        bis_match = resolve_matching_standard_id(cur, "bis_standards", f"{s_num} {s_title}", col_name="id")
-        text_standard_id = bis_match or s_num or s_id
-        evidence_document = "BIS Product Classification"
-        evidence_page = 1
-        validation_reason = f"'{search_term.title()}' is directly classified under {standard_number} in the BIS Product Classifications database."
-    else:
-        # Check standards table directly
-        cur.execute("""
-            SELECT standard_number, title, id, certification_type, group_name
-            FROM standards;
-        """)
-        s_rows = cur.fetchall()
-        std_match = None
-        for sr in s_rows:
-            s_num, s_title, s_id, cert_type_val, g_name = sr
-            if search_term.lower() in s_title.lower() or search_term.lower() in s_num.lower():
-                std_match = sr
-                break
-            elif tokens and all(tok in (s_num + " " + s_title).lower() for tok in tokens):
-                std_match = sr
-                break
+        if score > best_score:
+            best_score = score
+            best_match = r[:7]
+            is_from_class = True
 
-        if std_match:
-            standard_number, standard_title, s_id, cert_type_val, g_name = std_match
+    # 1b. Score matches directly from standards table
+    cur.execute("""
+        SELECT standard_number, title, id, certification_type, group_name
+        FROM standards;
+    """)
+    s_rows = cur.fetchall()
+    
+    for sr in s_rows:
+        s_num, s_title, s_id, cert_type_val, g_name = sr
+        title_l = (s_title or "").lower()
+        num_l = (s_num or "").lower()
+        combined_text = (num_l + " " + title_l)
+        
+        score = 0
+        if search_term.lower() == title_l:
+            score = 100
+        elif search_term.lower() in title_l:
+            score = 90
+        elif search_term.lower() in num_l:
+            score = 80
+        elif tokens and all(tok in combined_text for tok in tokens):
+            score = 70 - (len(title_l) * 0.1)
+
+        if score > best_score:
+            best_score = score
+            best_match = sr
+            is_from_class = False
+
+    # 1c. Process the highest scoring match
+    if best_match and best_score > 0:
+        if is_from_class:
+            disp_name, p_type, s_id, s_num, s_title, cert_type_val, g_name = best_match
+            standard_number = s_num
+            standard_title = s_title
+            cert_type = cert_type_val or "Mandatory"
+            group_name = g_name or group_name
+            bis_match = resolve_matching_standard_id(cur, "bis_standards", f"{s_num} {s_title}", col_name="id")
+            text_standard_id = bis_match or s_num or s_id
+            evidence_document = "BIS Product Classification"
+            evidence_page = 1
+            validation_reason = f"'{search_term.title()}' is directly classified under {standard_number} in the BIS Product Classifications database."
+        else:
+            standard_number, standard_title, s_id, cert_type_val, g_name = best_match
             cert_type = cert_type_val or "Mandatory"
             group_name = g_name or group_name
             bis_match = resolve_matching_standard_id(cur, "bis_standards", f"{standard_number} {standard_title}", col_name="id")

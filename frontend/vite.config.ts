@@ -107,7 +107,7 @@ export default defineConfig({
         ]
       },
       devOptions: {
-        enabled: true
+        enabled: false
       }
     })
   ],
@@ -116,9 +116,11 @@ export default defineConfig({
     include: [
       'lucide-react', 
       'react-markdown', 
+      'remark-gfm', 'react-router-dom',
       'canvas-confetti', 
       'i18next', 
       'react-i18next'
+      
     ]
   },
   server: {

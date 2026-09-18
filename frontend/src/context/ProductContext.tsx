@@ -176,11 +176,14 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
         return;
       }
 
-      const standardId = resolved.standard.text_standard_id || resolved.standard.standard_number;
+      const rawStandardId = resolved.standard.text_standard_id || resolved.standard.standard_number || '';
+      // Clean up slashes, parentheses, and extra spaces so the backend parser can read it flawlessly
+      const cleanStandardId = rawStandardId.replace(/\//g, '-').replace(/[()]/g, '').replace(/\s+/g, ' ').trim();
+      
       const [testingRes, docsRes, processRes] = await Promise.allSettled([
-        getTestingAndLabs(standardId, controller.signal),
-        getStandardDocuments(standardId, controller.signal),
-        getStandardProcess(standardId, controller.signal),
+        getTestingAndLabs(cleanStandardId, controller.signal),
+        getStandardDocuments(cleanStandardId, controller.signal),
+        getStandardProcess(cleanStandardId, controller.signal),
       ]);
 
       let fileCitations: Citation[] = [];
