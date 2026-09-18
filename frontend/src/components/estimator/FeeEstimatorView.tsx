@@ -49,6 +49,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const resultsRef = useRef<HTMLDivElement | null>(null); // <--- ADD THIS
 
   // Load available standards options from backend on mount — no hardcoded fallback
   useEffect(() => {
@@ -123,7 +124,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
   }, [standardOptions, selectedStandardId]);
 
   // Database-driven calculation
-  const executeCalculation = async () => {
+ const executeCalculation = async () => {
     // Prevent duplicate in-flight requests (Rule 9)
     if (isLoading) return;
 
@@ -157,6 +158,11 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
       } else {
         setResult(data);
         setFeeUnavailableInfo(null);
+        
+        // --- ADD THIS: Smooth scroll down to results container ---
+        setTimeout(() => {
+          resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 100);
       }
     } catch (err: any) {
       if (err.name === 'AbortError') return;
@@ -172,13 +178,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
       abortControllerRef.current = null;
     }
   };
-
-  // Run initial calculation once on mount or when standard options load
-  useEffect(() => {
-    executeCalculation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedStandardId, industryScale, isForeignManufacturer]);
-
+  
   const handlePrint = () => {
     window.print();
   };
@@ -481,8 +481,9 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
 
  {/* Results Card / Itemized Receipt */}
       {result && (
-        <div className="bg-white rounded-3xl shadow-card border border-slate-200 overflow-hidden animate-slide-up space-y-6 print-container w-full">
+        <div ref={resultsRef} className="bg-white rounded-3xl shadow-card border border-slate-200 overflow-hidden animate-slide-up space-y-6 print-container w-full">
           {/* Result Header */}
+          
           <div className="p-5 sm:p-8 bg-gradient-to-r from-slate-900 to-bis-950 text-white flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sm:gap-6 w-full">
             <div className="w-full md:w-auto">
               <div className="flex flex-wrap items-center gap-2">
@@ -500,7 +501,7 @@ export const FeeEstimatorView: React.FC<FeeEstimatorViewProps> = ({ onAskAIAbout
                 {currentStandard?.title}
               </div>
             </div>
-
+        
             {totalConcessionSaved > 0 && !result.is_foreign && (
               <div className="w-full md:w-auto px-4 py-3 sm:py-2 rounded-xl bg-emerald-500/20 border border-emerald-500/30 text-emerald-300 text-center shrink-0 mt-2 md:mt-0">
                 <div className="text-[10px] uppercase font-extrabold tracking-wider text-emerald-400">
