@@ -1,41 +1,42 @@
-import os
-import psycopg2
+import sys, os
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import psycopg2, json
 from dotenv import load_dotenv
-
 load_dotenv()
-DB_URI = os.getenv("DB_URI") or os.getenv("DATABASE_URL")
-conn = psycopg2.connect(DB_URI)
+from api_server import get_db
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+
+conn = get_db()
 cur = conn.cursor()
 
-# Check tables
+# 1. List all tables
 cur.execute("""
-SELECT table_name 
-FROM information_schema.tables 
-WHERE table_schema = 'public' 
-ORDER BY table_name;
+    SELECT table_name 
+    FROM information_schema.tables 
+    WHERE table_schema = 'public' 
+    ORDER BY table_name;
 """)
 tables = [r[0] for r in cur.fetchall()]
-print("Tables:", [t for t in tables if "fee" in t or "standard" in t])
+print('=== TABLES IN DB ===')
+for t in tables:
+    print(' -', t)
 
-# Check columns
-for t in ["bis_fees", "standards", "bis_standards"]:
-    if t in tables:
-        cur.execute(f"""
-        SELECT column_name, data_type 
-        FROM information_schema.columns 
-        WHERE table_name = '{t}';
-        """)
-        print(f"\n--- {t} columns ---")
-        for col, dtype in cur.fetchall():
-            print(f"  {col}: {dtype}")
-
-# Sample bis_fees records
-if "bis_fees" in tables:
-    cur.execute("SELECT * FROM bis_fees LIMIT 5;")
-    cols = [desc[0] for desc in cur.description]
-    print(f"\n--- bis_fees sample (cols: {cols}) ---")
-    for row in cur.fetchall():
-        print(dict(zip(cols, row)))
+# 2. Check for any table with 'test' or 'standard' in name
+print('\n=== COLUMNS IN TEST-RELATED TABLES ===')
+for t in tables:
+    if any(k in t.lower() for k in ['test', 'standard', 'clause', 'param', 'requir', 'bis']):
+        cur.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_schema = 'public' AND table_name = %s
+            ORDER BY ordinal_position;
+        """, (t,))
+        cols = cur.fetchall()
+        print(f"\nTable: {t}")
+        for c, dt in cols:
+            print(f"   {c}: {dt}")
 
 cur.close()
 conn.close()

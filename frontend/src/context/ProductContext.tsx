@@ -105,8 +105,27 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
     const controller = new AbortController();
     activeAbortControllerRef.current = controller;
 
+    // Stamp this search so stale async responses from a previous product can be discarded.
+    const searchStamp = Date.now();
+    (controller as any)._searchStamp = searchStamp;
+
     setIsLoading(true);
     setErrorMessage(null);
+
+    // Immediately clear regulatory state so stale data from the PREVIOUS product
+    // does not remain visible while the new fetch is in-flight.
+    setGuideData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        testingDetails: {
+          ...prev.testingDetails,
+          hasRegulatoryUpdates: false,
+          regulatoryNoticeCount: 0,
+          unmappedWarning: null,
+        },
+      };
+    });
 
     // If query is a direct product name (e.g. from shortcut card), prioritize it over potentially stale state
     const isDirectProduct = Boolean(trimmed && !trimmed.toLowerCase().startsWith('compliance requirements for'));
@@ -199,6 +218,15 @@ export const ProductProvider: React.FC<{ children: React.ReactNode }> = ({ child
       }
 
       const testingData = testingRes.status === 'fulfilled' ? testingRes.value : null;
+
+      // Race-condition guard: if a newer search has already started (stamp mismatch),
+      // discard this response to prevent stale data from a previous product overwriting
+      // the current product's regulatory state.
+      if ((activeAbortControllerRef.current as any)?._searchStamp !== searchStamp &&
+          activeAbortControllerRef.current !== null) {
+        return;
+      }
+
       const routineTests: TestItem[] = (testingData?.routine_tests || []).map((t: any) => ({
         id: t.id,
         name: t.requirement || 'Routine Verification Test',

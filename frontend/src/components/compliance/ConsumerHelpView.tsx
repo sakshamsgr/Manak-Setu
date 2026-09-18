@@ -392,36 +392,60 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
               <div className="p-5 rounded-2xl bg-slate-50 border border-slate-200 space-y-4 animate-slide-up">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200/80 pb-3">
                   <div className="flex items-center gap-2">
-                    {verifyResult.title === 'INVALID HUID FORMAT' ? (
-                      <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                        Invalid HUID Format
-                      </span>
-                    ) : verifyResult.title === 'HUID VERIFIED — DEMO DATA' ? (
+                    {/* CM/L Licence badges */}
+                    {verifyResult.query_type === 'cml' && verifyResult.found === true ? (
                       <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        HUID VERIFIED — DEMO DATA
+                        Licence Found
                       </span>
-                    ) : verifyResult.title === 'HUID NOT FOUND' ? (
+                    ) : verifyResult.query_type === 'cml' && verifyResult.valid_format === true && verifyResult.found === false && !verifyResult.error ? (
                       <span className="px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
                         <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
-                        HUID NOT FOUND
+                        Valid Format — Not Found
                       </span>
-                    ) : verifyResult.error ? (
+                    ) : verifyResult.query_type === 'cml' && verifyResult.valid_format === false ? (
+                      <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                        Invalid CM/L Format
+                      </span>
+                    ) : verifyResult.query_type === 'cml' && verifyResult.error ? (
                       <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
                         <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
                         Verification Error
                       </span>
-                    ) : verifyResult.valid_format !== false ? (
-                      <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        Valid Format
-                      </span>
                     ) : (
-                      <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
-                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
-                        Format Discrepancy
-                      </span>
+                      /* HUID / Standard badges */
+                      verifyResult.title === 'INVALID HUID FORMAT' ? (
+                        <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                          Invalid HUID Format
+                        </span>
+                      ) : verifyResult.title === 'HUID VERIFIED — DEMO DATA' ? (
+                        <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          HUID VERIFIED — DEMO DATA
+                        </span>
+                      ) : verifyResult.title === 'HUID NOT FOUND' ? (
+                        <span className="px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+                          HUID NOT FOUND
+                        </span>
+                      ) : verifyResult.error ? (
+                        <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                          Verification Error
+                        </span>
+                      ) : verifyResult.valid_format !== false ? (
+                        <span className="px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                          Valid Format
+                        </span>
+                      ) : (
+                        <span className="px-2.5 py-0.5 rounded-md bg-rose-100 text-rose-800 text-[11px] font-extrabold uppercase tracking-wide flex items-center gap-1">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                          Format Discrepancy
+                        </span>
+                      )
                     )}
 
                     {verifyResult.is_mandatory && (
@@ -451,6 +475,58 @@ export const ConsumerHelpView: React.FC<ConsumerHelpViewProps> = ({ onNavigateTo
                   <h3 className="text-sm font-extrabold text-slate-900">{verifyResult.title}</h3>
                   <p className="text-xs text-slate-600 mt-1 leading-relaxed">{verifyResult.description}</p>
                 </div>
+
+                {/* CM/L Database Record Grid — rendered exclusively from database values */}
+                {verifyResult.query_type === 'cml' && verifyResult.found === true && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    <div className="p-3 bg-white rounded-xl border border-slate-200 sm:col-span-2">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">CM/L Number</div>
+                      <div className="text-xs font-bold text-slate-900 font-mono">{verifyResult.licence_number || '—'}</div>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Manufacturer</div>
+                      <div className="text-xs font-bold text-slate-900">{verifyResult.manufacturer || '—'}</div>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Product</div>
+                      <div className="text-xs font-bold text-slate-900">{verifyResult.product || '—'}</div>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Standard</div>
+                      <div className="text-xs font-bold text-slate-900">{verifyResult.standard || '—'}</div>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Location</div>
+                      <div className="text-xs font-bold text-slate-900">{verifyResult.location || '—'}</div>
+                    </div>
+                    <div className="p-3 bg-white rounded-xl border border-slate-200">
+                      <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Status</div>
+                      <div className={`text-xs font-bold ${
+                        verifyResult.status?.toLowerCase() === 'active'
+                          ? 'text-emerald-700'
+                          : verifyResult.status?.toLowerCase() === 'cancelled' || verifyResult.status?.toLowerCase() === 'revoked'
+                          ? 'text-rose-700'
+                          : 'text-slate-900'
+                      }`}>{verifyResult.status || '—'}</div>
+                    </div>
+                    {(verifyResult.valid_from || verifyResult.valid_until) && (
+                      <div className="p-3 bg-white rounded-xl border border-slate-200 sm:col-span-2 flex gap-6">
+                        {verifyResult.valid_from && (
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Valid From</div>
+                            <div className="text-xs font-bold text-slate-900">{verifyResult.valid_from}</div>
+                          </div>
+                        )}
+                        {verifyResult.valid_until && (
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wide text-slate-500 mb-0.5">Valid Until</div>
+                            <div className="text-xs font-bold text-slate-900">{verifyResult.valid_until}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {verifyResult.query_type === 'huid' && verifyResult.huid && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">

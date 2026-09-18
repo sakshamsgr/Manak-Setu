@@ -417,15 +417,15 @@ export interface ConsumerVerificationResult {
   input: string;
   normalized_code?: string;
   valid_format?: boolean;
+  found?: boolean;
   title: string;
   description: string;
   mandatory_marks?: Array<{ mark: string; desc: string }>;
   verification_steps?: string[];
   official_url: string;
-  found?: boolean;
-  verified?: boolean;
   error?: boolean;
   prototype_label?: string;
+  // HUID database fields
   huid?: string;
   article_material?: string;
   purity?: string;
@@ -440,7 +440,18 @@ export interface ConsumerVerificationResult {
     notification_number: string;
     effective_date: string;
   } | null;
+  // CM/L database record fields (from public.bis_licences)
+  licence_number?: string;
+  manufacturer?: string;
+  product?: string;
+  standard?: string;
+  location?: string;
+  factory_address?: string;
+  status?: string;
+  valid_from?: string;
+  valid_until?: string;
 }
+
 
 /**
  * Consumer Verification API: Verify CM/L number, Gold HUID, or Indian Standard

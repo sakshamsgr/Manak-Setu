@@ -565,18 +565,23 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
             </div>
           </div>
 
-          {/* Verified Regulatory Notifications Banner (if standard has test change notices) */}
-          {testingDetails.hasRegulatoryUpdates && (
+          {/* Verified Regulatory Notifications Banner
+              Show ONLY when the currently-selected standard has actual matching
+              notifications in bis_notifications (count comes from the backend query
+              filtered by that standard's ID). Both flags must be true:
+              - hasRegulatoryUpdates: at least one test row has a matched notification
+              - regulatoryNoticeCount > 0: the DB returned at least one notification row
+              If either is false/zero, the banner is hidden entirely. */}
+          {testingDetails.hasRegulatoryUpdates &&
+           (testingDetails.regulatoryNoticeCount ?? 0) > 0 && (
             <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-200 text-xs text-amber-950 flex items-start gap-2.5 shadow-2xs">
               <Sparkles className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <div className="space-y-0.5">
                 <div className="font-extrabold text-amber-950 flex items-center gap-2">
                   <span>Verified BIS Regulatory Test Updates Active</span>
-                  {testingDetails.regulatoryNoticeCount && testingDetails.regulatoryNoticeCount > 0 && (
-                    <span className="px-2 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-200/80 text-amber-900">
-                      {testingDetails.regulatoryNoticeCount} {testingDetails.regulatoryNoticeCount === 1 ? 'Notice' : 'Notices'}
-                    </span>
-                  )}
+                  <span className="px-2 py-0.2 rounded-full text-[10px] font-extrabold bg-amber-200/80 text-amber-900">
+                    {testingDetails.regulatoryNoticeCount} {testingDetails.regulatoryNoticeCount === 1 ? 'Notice' : 'Notices'}
+                  </span>
                 </div>
                 <p className="text-[11px] text-amber-900 leading-relaxed">
                   Test requirements for this standard have been verified against official BIS regulatory gazette orders. Look for the <span className="font-bold text-amber-950">New BIS Requirement</span> badges in the test schedule below.
@@ -584,6 +589,7 @@ export const Step4Testing: React.FC<Step4TestingProps> = ({
               </div>
             </div>
           )}
+
 
           {/* Unmapped Regulatory Notice Warning (Requirement 9) */}
           {testingDetails.unmappedWarning && (

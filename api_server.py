@@ -232,115 +232,175 @@ def resolve_matching_standard_id(cur, table_name: str, requested_id: str, col_na
     if col_name not in ALLOWED_STANDARD_COLS:
         raise ValueError(f"Unauthorized column name in standard query: {col_name}")
 
-    # If requested_id is a UUID, resolve standard_number and title
+    # 1. Exact match in target table
+    cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} = %s LIMIT 1;", (requested_id,))
+    row = cur.fetchone()
+    if row:
+        return row[0]
+
+    # Resolve canonical standards.id (UUID), standard_number, and title
+    std_uuid = None
+    std_num = None
+    std_title = None
     if re.match(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', requested_id, re.IGNORECASE):
+        std_uuid = requested_id
+        cur.execute("SELECT standard_number, title FROM standards WHERE id = %s;", (requested_id,))
+        s_row = cur.fetchone()
+        if s_row:
+            std_num = s_row[0]
+            std_title = s_row[1]
+    else:
+        cur.execute("""
+            SELECT id, standard_number, title FROM standards 
+            WHERE standard_number ILIKE %s 
+               OR id::text = %s 
+               OR %s ILIKE ('%%' || standard_number || '%%')
+            LIMIT 1;
+        """, (f"%{requested_id}%", requested_id, requested_id))
+        s_row = cur.fetchone()
+        if s_row:
+            std_uuid, std_num, std_title = s_row
+        else:
+            cur.execute("SELECT id, title FROM bis_standards WHERE id = %s LIMIT 1;", (requested_id,))
+            b_row = cur.fetchone()
+            if b_row:
+                cur.execute("SELECT id, standard_number, title FROM standards WHERE title ILIKE %s LIMIT 1;", (f"%{b_row[1]}%",))
+                s_row2 = cur.fetchone()
+                if s_row2:
+                    std_uuid, std_num, std_title = s_row2
+
+    # 2. Check if table directly stores the UUID (e.g. standard_tests with UUIDs)
+    if std_uuid:
+        cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} = %s LIMIT 1;", (std_uuid,))
+        u_row = cur.fetchone()
+        if u_row:
+            return u_row[0]
+
+    # 3. Relational document join for standard_tests (source_document_id -> documents / standard_documents -> standards)
+    if std_uuid and table_name == "standard_tests":
+        cur.execute("""
+            SELECT DISTINCT st.standard_id 
+            FROM standard_tests st
+            LEFT JOIN documents d ON st.source_document_id = d.id
+            LEFT JOIN standard_documents sd ON st.source_document_id = sd.id
+            WHERE d.standard_id = %s OR sd.standard_id = %s
+            LIMIT 1;
+        """, (std_uuid, std_uuid))
+        d_row = cur.fetchone()
+        if d_row and d_row[0]:
+            return d_row[0]
+
+    # 4. Robust Digit Sequence Matching
+    for probe in [requested_id, std_num]:
+        if not probe:
+            continue
+        req_digits = re.findall(r'\d+', probe)
+        if req_digits:
+            base_num = req_digits[0]
+            cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s;", (f"%{base_num}%",))
+            candidates = [r[0] for r in cur.fetchall() if r[0]]
+            req_struct = req_digits[:-1] if len(req_digits) > 1 and len(req_digits[-1]) == 4 and int(req_digits[-1]) > 1900 else list(req_digits)
+            for cand in candidates:
+                cand_digits = re.findall(r'\d+', cand)
+                cand_struct = cand_digits[:-1] if len(cand_digits) > 1 and len(cand_digits[-1]) == 4 and int(cand_digits[-1]) > 1900 else list(cand_digits)
+                if req_struct == cand_struct:
+                    return cand
+
+    # 5. Fallback to Parse Standard Components
+    for probe in [requested_id, std_num]:
+        if not probe:
+            continue
+        parsed = parse_standard_components(probe)
+        base = parsed["base"]
+        if base:
+            cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s OR {col_name} ILIKE %s;", (f"%{base}%", f"{base}%"))
+            candidates = [r[0] for r in cur.fetchall() if r[0]]
+            best_cand = None
+            best_score = -1
+            req_part = parsed["part"]
+            req_sec = parsed["sec"]
+            req_canon = parsed["canonical"]
+            
+            for cand in candidates:
+                cand_parsed = parse_standard_components(cand)
+                if cand_parsed["base"] != base:
+                    continue
+                    
+                score = 0
+                if cand_parsed["canonical"] == req_canon:
+                    score = 100
+                elif req_part and req_sec:
+                    if cand_parsed["part"] == req_part and cand_parsed["sec"] == req_sec:
+                        score = 90
+                    else:
+                        continue
+                elif req_part and not req_sec:
+                    if cand_parsed["part"] == req_part and not cand_parsed["sec"]:
+                        score = 90
+                    else:
+                        continue
+                else:
+                    if not cand_parsed["part"] and not cand_parsed["sec"]:
+                        score = 80
+                    else:
+                        continue
+                        
+                if score > best_score:
+                    best_score = score
+                    best_cand = cand
+            if best_cand:
+                return best_cand
+
+    # 6. QCO co-standard relational matching
+    # If standard A (e.g. IS 366:1991) belongs to a QCO that also governs standard B (e.g. IS 302-2-3),
+    # check if table_name has records under standard B!
+    for probe in [requested_id, std_num]:
+        if not probe:
+            continue
+        cur.execute("""
+            SELECT DISTINCT qs2.standard_id
+            FROM qco_standards qs1
+            JOIN qco_standards qs2 ON qs1.qco_id = qs2.qco_id AND qs1.id != qs2.id
+            WHERE (qs1.standard_id = %s OR qs1.standard_id ILIKE %s)
+              AND qs2.standard_id != qs1.standard_id;
+        """, (probe, f"%{probe}%"))
+        co_stds = [r[0] for r in cur.fetchall() if r[0]]
+        for co_std in co_stds:
+            cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} = %s LIMIT 1;", (co_std,))
+            c_row = cur.fetchone()
+            if c_row:
+                return c_row[0]
+            co_parsed = parse_standard_components(co_std)
+            if co_parsed["canonical"]:
+                cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s LIMIT 1;", (f"%{co_parsed['canonical']}%",))
+                c_row2 = cur.fetchone()
+                if c_row2:
+                    return c_row2[0]
+
+    # 7. DYNAMIC AI VECTOR SEARCH FALLBACK (Zero Hardcoding)
+    # If structural SQL matching fails entirely, use the AI embedding model to find the semantic equivalent!
+    try:
+        semantic_query = std_title or requested_id
+        vector_docs = supabase_vector_search(semantic_query, top_k=5, threshold=0.60)
+        for d in vector_docs:
+            semantic_sid = d['meta'].get('standard_id', '')
+            if not semantic_sid:
+                continue
+            
+            cand_p = parse_standard_components(semantic_sid)
+            if cand_p["canonical"]:
+                cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s LIMIT 1;", (f"%{cand_p['canonical']}%",))
+                final_row = cur.fetchone()
+                if final_row:
+                    return final_row[0]
+    except Exception as e:
+        print(f"Dynamic AI Fallback Error: {e}")
         try:
-            cur.execute("SELECT standard_number, title FROM standards WHERE id = %s;", (requested_id,))
-            s_row = cur.fetchone()
-            if s_row:
-                s_num = s_row[0] or ""
-                s_title = s_row[1] or ""
-                requested_id = f"{s_num} {s_title}".strip()
+            cur.connection.rollback()
         except Exception:
             pass
 
-    # 1. Exact match in table
-    cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} = %s LIMIT 1;", (requested_id,))
-    row = cur.fetchone()
-    if row: return row[0]
-        
-    # 2. ROBUST DIGIT SEQUENCE MATCHING
-    req_digits = re.findall(r'\d+', requested_id)
-    if req_digits:
-        base_num = req_digits[0]
-        cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s;", (f"%{base_num}%",))
-        candidates = [r[0] for r in cur.fetchall() if r[0]]
-        req_struct = req_digits[:-1] if len(req_digits) > 1 and len(req_digits[-1]) == 4 and int(req_digits[-1]) > 1900 else list(req_digits)
-        for cand in candidates:
-            cand_digits = re.findall(r'\d+', cand)
-            cand_struct = cand_digits[:-1] if len(cand_digits) > 1 and len(cand_digits[-1]) == 4 and int(cand_digits[-1]) > 1900 else list(cand_digits)
-            if req_struct == cand_struct:
-                return cand
-
-    # 3. Fallback to Parse Standard Components
-    parsed = parse_standard_components(requested_id)
-    base = parsed["base"]
-    if not base: return None
-        
-    cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s OR {col_name} ILIKE %s;", (f"%{base}%", f"{base}%"))
-    candidates = [r[0] for r in cur.fetchall() if r[0]]
-    if not candidates: return None
-        
-    best_cand = None
-    best_score = -1
-    req_part = parsed["part"]
-    req_sec = parsed["sec"]
-    req_canon = parsed["canonical"]
-    
-    for cand in candidates:
-        cand_parsed = parse_standard_components(cand)
-        if cand_parsed["base"] != base: continue
-            
-        score = 0
-        if cand_parsed["canonical"] == req_canon:
-            score = 100
-        elif req_part and req_sec:
-            if cand_parsed["part"] == req_part and cand_parsed["sec"] == req_sec: score = 90
-            else: continue
-        elif req_part and not req_sec:
-            if cand_parsed["part"] == req_part and not cand_parsed["sec"]: score = 90
-            else: continue
-        else:
-            if not cand_parsed["part"] and not cand_parsed["sec"]: score = 80
-            else: continue
-                
-        if score > best_score:
-            best_score = score
-            best_cand = cand
-            
-    # 4. DYNAMIC AI VECTOR SEARCH FALLBACK (Zero Hardcoding)
-    # If structural SQL matching fails entirely, use the AI embedding model to find the semantic equivalent!
-    if not best_cand:
-        try:
-            # Get the actual title of the requested standard to use as the semantic search query
-            cur.execute("SELECT title FROM standards WHERE standard_number = %s OR id = %s LIMIT 1;", (requested_id, requested_id))
-            t_row = cur.fetchone()
-            semantic_query = t_row[0] if t_row and t_row[0] else requested_id
-
-            # Ask the AI vector database for the closest conceptual standard
-            vector_docs = supabase_vector_search(semantic_query, top_k=5, threshold=0.70)
-            
-            for d in vector_docs:
-                semantic_sid = d['meta'].get('standard_id', '')
-                if not semantic_sid: continue
-                    
-                # Clean the AI's suggested ID and see if it exists in the target table (e.g., standard_tests)
-                clean_semantic_sid = re.findall(r'\d+', semantic_sid)
-                if clean_semantic_sid:
-                    base_num = clean_semantic_sid[0]
-                    cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s;", (f"%{base_num}%",))
-                    ai_candidates = [r[0] for r in cur.fetchall() if r[0]]
-                    
-                    ai_struct = clean_semantic_sid[:-1] if len(clean_semantic_sid) > 1 and len(clean_semantic_sid[-1]) == 4 and int(clean_semantic_sid[-1]) > 1900 else list(clean_semantic_sid)
-                    
-                    for ai_cand in ai_candidates:
-                        cand_digits = re.findall(r'\d+', ai_cand)
-                        cand_struct = cand_digits[:-1] if len(cand_digits) > 1 and len(cand_digits[-1]) == 4 and int(cand_digits[-1]) > 1900 else list(cand_digits)
-                        
-                        if ai_struct == cand_struct:
-                            # CRITICAL FIX: The AI found the correct string (e.g., 'IS 302-2-3').
-                            # We MUST recursively run it back through the exact match logic 
-                            # at the top so it retrieves the proper SQL UUID for the tables!
-                            cur.execute(f"SELECT DISTINCT {col_name} FROM {table_name} WHERE {col_name} ILIKE %s LIMIT 1;", (f"%{ai_cand}%",))
-                            final_row = cur.fetchone()
-                            if final_row:
-                                return final_row[0]
-                            return ai_cand
-        except Exception as e:
-            print(f"Dynamic AI Fallback Error: {e}")
-            pass
-
-    return best_cand
+    return None
 
 def extract_core_id(std_id: str):
     if not std_id:
@@ -2955,30 +3015,158 @@ async def verify_consumer_mark(
     if query_type == "cml":
         digits = "".join(ch for ch in code_clean if ch.isdigit())
         is_valid_format = len(digits) in (7, 8)
-        
-        if is_valid_format:
-            msg_en = f"CM/L number {digits} follows the official 7/8-digit Bureau of Indian Standards licence format under Scheme-I Product Certification."
-            msg_hi = f"सीएम/एल संख्या {digits} स्कीम-I उत्पाद प्रमाणन के तहत बीआईएस लाइसेंस के आधिकारिक 7/8-अंकीय प्रारूप का पालन करती है।"
-            msg_bn = f"সিএম/এল নম্বর {digits} স্কিম-১ পণ্য সার্টিফিকেশনের অধীনে বিআইএস লাইসেন্সের অফিসিয়াল ৭/৮-সংখ্যার ফরম্যাট অনুসরণ করে।"
-        else:
+
+        # --- Invalid format: return immediately, no DB query ---
+        if not is_valid_format:
             msg_en = "Invalid CM/L format. A genuine BIS licence number must contain exactly 7 or 8 numeric digits (e.g. CM/L-1234567)."
             msg_hi = "अमान्य सीएम/एल प्रारूप। असली बीआईएस लाइसेंस संख्या में ठीक 7 या 8 अंक होने चाहिए।"
             msg_bn = "অবৈধ সিএম/এল ফরম্যাট। একটি আসল বিআইএস লাইসেন্স নম্বরে ঠিক ৭ বা ৮টি সংখ্যা থাকতে হবে।"
+            msg = msg_hi if language == "hi" else (msg_bn if language == "bn" else msg_en)
+            return {
+                "query_type": "cml",
+                "input": code,
+                "normalized_code": digits,
+                "valid_format": False,
+                "found": False,
+                "title": "Invalid CM/L Format",
+                "description": msg,
+                "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+            }
 
-        msg = msg_hi if language == "hi" else (msg_bn if language == "bn" else msg_en)
+        # --- Valid format: query database ---
+        # Normalize to canonical CM/L-XXXXXXX format for lookup
+        normalized_cml = f"CM/L-{digits}"
+
+        db_row = None
+        db_error = None
+        conn_cml = None
+        try:
+            conn_cml = get_db()
+            cur_cml = conn_cml.cursor()
+            cur_cml.execute(
+                """
+                SELECT
+                    cm_l_number,
+                    manufacturer_name,
+                    product_name,
+                    standard_number,
+                    factory_address,
+                    city,
+                    state,
+                    licence_status,
+                    valid_from,
+                    valid_until,
+                    source_url
+                FROM public.bis_licences
+                WHERE cm_l_number = %s
+                LIMIT 1;
+                """,
+                (normalized_cml,)
+            )
+            db_row = cur_cml.fetchone()
+            cur_cml.close()
+        except Exception as exc:
+            logger.exception("CM/L lookup failed for %s", normalized_cml)
+            db_error = str(exc)
+        finally:
+            if conn_cml is not None:
+                conn_cml.close()
+
+        # --- Database error ---
+        if db_error:
+            return {
+                "query_type": "cml",
+                "input": code,
+                "normalized_code": digits,
+                "valid_format": True,
+                "found": False,
+                "error": True,
+                "title": "Verification Service Error",
+                "description": (
+                    "The CM/L licence lookup service is temporarily unavailable. "
+                    "Please try again or validate manually on the official BIS portal."
+                ),
+                "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+            }
+
+        # --- Not found in database ---
+        if db_row is None:
+            not_found_en = (
+                f"CM/L number {normalized_cml} has a valid format but no matching licence record "
+                f"was found in the available BIS licence database. "
+                f"Verify directly on the official BIS Care portal for the authoritative record."
+            )
+            not_found_hi = (
+                f"सीएम/एल संख्या {normalized_cml} का प्रारूप वैध है, लेकिन उपलब्ध डेटाबेस में कोई मिलान रिकॉर्ड नहीं मिला।"
+            )
+            not_found_bn = (
+                f"সিএম/এল নম্বর {normalized_cml}-এর ফরম্যাট বৈধ, কিন্তু উপলব্ধ ডেটাবেসে কোনো মিলানো রেকর্ড পাওয়া যায়নি।"
+            )
+            not_found_msg = not_found_hi if language == "hi" else (not_found_bn if language == "bn" else not_found_en)
+            return {
+                "query_type": "cml",
+                "input": code,
+                "normalized_code": digits,
+                "valid_format": True,
+                "found": False,
+                "title": "Licence Record Not Found",
+                "description": not_found_msg,
+                "verification_steps": [
+                    "Verify the CM/L number on the official BIS Care mobile app.",
+                    "Check the BIS e-portal for the latest licensee records.",
+                    "A valid format does not by itself confirm that the licence is active."
+                ],
+                "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+            }
+
+        # --- Record found: build location from city + state ---
+        db_cm_l_number   = db_row[0]
+        db_manufacturer  = db_row[1] or ""
+        db_product       = db_row[2] or ""
+        db_standard      = db_row[3] or ""
+        db_address       = db_row[4] or ""
+        db_city          = db_row[5] or ""
+        db_state         = db_row[6] or ""
+        db_status        = db_row[7] or ""
+        db_valid_from    = str(db_row[8]) if db_row[8] else None
+        db_valid_until   = str(db_row[9]) if db_row[9] else None
+        db_source_url    = db_row[10] or "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+
+        # Build human-readable location: "City, State" or whichever is available
+        location_parts = [p for p in [db_city, db_state] if p]
+        db_location = ", ".join(location_parts) if location_parts else ""
+
+        found_en = (
+            f"Licence {db_cm_l_number} is registered in the BIS licence database under "
+            f"Scheme-I Product Certification. Details are sourced directly from the database."
+        )
+        found_hi = (
+            f"लाइसेंस {db_cm_l_number} बीआईएस लाइसेंस डेटाबेस में स्कीम-I उत्पाद प्रमाणन के अंतर्गत पंजीकृत है।"
+        )
+        found_bn = (
+            f"লাইসেন্স {db_cm_l_number} বিআইএস লাইসেন্স ডেটাবেসে স্কিম-I পণ্য সার্টিফিকেশনের অধীনে নিবন্ধিত।"
+        )
+        found_msg = found_hi if language == "hi" else (found_bn if language == "bn" else found_en)
+
         return {
             "query_type": "cml",
             "input": code,
             "normalized_code": digits,
-            "valid_format": is_valid_format,
-            "title": f"CM/L-{digits}" if is_valid_format else "Invalid CM/L Format",
-            "description": msg,
-            "verification_steps": [
-                "Open the official BIS Care Mobile App or e-BIS portal.",
-                "Navigate to 'Verify Licence Details (CM/L)'.",
-                f"Enter licence number {digits if is_valid_format else 'XXXXXXX'} to view licensee name, factory address, and validity."
-            ],
-            "official_url": "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
+            "valid_format": True,
+            "found": True,
+            "title": db_cm_l_number,
+            "description": found_msg,
+            # --- Database record fields ---
+            "licence_number": db_cm_l_number,
+            "manufacturer": db_manufacturer,
+            "product": db_product,
+            "standard": db_standard,
+            "location": db_location,
+            "factory_address": db_address,
+            "status": db_status,
+            "valid_from": db_valid_from,
+            "valid_until": db_valid_until,
+            "official_url": db_source_url or "https://www.services.bis.gov.in/php/BIS_2.0/bisconnect/care"
         }
 
     elif query_type == "huid":
